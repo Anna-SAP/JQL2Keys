@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jira L10N Key Extractor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script>
+    tailwind.config = {
+        theme: { extend: { fontFamily: { mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'] } } }
+    }
+    </script>
+    <style>
+    [v-cloak] { display: none; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .log-panel::-webkit-scrollbar-thumb { background: #475569; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen text-gray-800">
+<div id="app" v-cloak>
+
+    <!-- ═══ HEADER ═══ -->
+    <header class="bg-gradient-to-r from-blue-700 to-indigo-800 text-white px-6 py-3 shadow-lg flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center font-bold text-sm">L10N</div>
+            <div>
+                <h1 class="text-lg font-semibold leading-tight">Jira L10N Key Extractor</h1>
+                <p class="text-blue-200 text-xs">Extract translation keys from Jira bugs</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <span v-if="stats.keyCount" class="text-xs bg-white/20 px-2 py-1 rounded">
+                {{stats.issueCount}} issues &middot; {{stats.langCount}} langs &middot; {{stats.keyCount}} keys
+            </span>
+            <button @click="sidebarOpen = !sidebarOpen"
+                class="lg:hidden p-1.5 rounded hover:bg-white/20 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- ═══ MAIN LAYOUT ═══ -->
+    <div class="flex min-h-[calc(100vh-56px)]">
+
+        <!-- ─── SIDEBAR ─── -->
+        <aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
+            class="fixed lg:static inset-y-14 left-0 z-30 w-80 bg-white border-r border-gray-200 flex flex-col transition-transform lg:transition-none overflow-y-auto">
+
+            <!-- Config Form -->
+            <form @submit.prevent="fetchAllIssues" class="p-4 space-y-3 border-b border-gray-100">
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Jira Domain</label>
+                    <input v-model="config.domain" type="url" required
+                        placeholder="https://jira.ringcentral.com"
+                        class="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                </div>
+
+                <!-- Auth Mode Toggle -->
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1.5">Auth Mode</label>
+                    <div class="flex rounded-md overflow-hidden border border-gray-300">
+                        <button type="button" @click="config.authMode='pat'"
+                            :class="config.authMode==='pat' ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'"
+                            class="flex-1 py-1.5 text-xs font-medium transition">
+                            PAT (Server)
+                        </button>
+                        <button type="button" @click="config.authMode='basic'"
+                            :class="config.authMode==='basic' ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'"
+                            class="flex-1 py-1.5 text-xs font-medium transition border-l border-gray-300">
+                            Basic Auth (Cloud)
+                        </button>
+                    </div>
+                    <p class="text-[10px] text-gray-400 mt-1">
+                        {{config.authMode==='pat' ? 'Bearer token — for Jira Server/Data Center' : 'Email + API Token — for Jira Cloud (*.atlassian.net)'}}
+                    </p>
+                </div>
+
+                <div v-if="config.authMode==='basic'">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Email</label>
+                    <input v-model="config.email" type="email"
+                        :required="config.authMode==='basic'"
+                        placeholder="you@company.com"
+                        class="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">
+                        {{config.authMode==='pat' ? 'Personal Access Token' : 'API Token'}}
+                    </label>
+                    <div class="relative">
+                        <input v-model="config.apiToken" :type="showToken ? 'text' : 'password'" required
+                            :placeholder="config.authMode==='pat' ? 'Paste your PAT here' : 'Jira API Token'"
+                            class="w-full px-2.5 py-1.5 pr-8 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono">
+                        <button type="button" @click="showToken = !showToken"
+                            class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                            <svg v-if="!showToken" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                            <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L6.59 6.59m7.532 7.532l3.29 3.29M3 3l18 18"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">JQL Query</label>
+                    <textarea v-model="config.jql" rows="3" required
+                        placeholder='issue in linkedIssues(LOC-24605) AND issuetype in (Bug)'
+                        class="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono resize-y"></textarea>
+                </div>
+
+                <!-- Proxy Settings -->
+                <details class="text-sm">
+                    <summary class="cursor-pointer text-xs font-medium text-gray-500 hover:text-gray-700 select-none">Advanced Settings</summary>
+                    <div class="mt-2 space-y-2 pl-1">
+                        <label class="flex items-center gap-2 text-xs text-gray-600">
+                            <input v-model="config.useProxy" type="checkbox" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                            Use CORS Proxy
+                        </label>
+                        <input v-if="config.useProxy" v-model="config.proxyUrl" type="url"
+                            placeholder="http://localhost:3001"
+                            class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono">
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Key Match Pattern (regex)</label>
+                            <input v-model="config.keyPattern" type="text"
+                                placeholder="RingCentral\.\S+"
+                                class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono">
+                        </div>
+                    </div>
+                </details>
+
+                <button type="submit" :disabled="state.loading"
+                    class="w-full bg-blue-600 text-white py-2 rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2">
+                    <template v-if="!state.loading">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                        Fetch &amp; Parse
+                    </template>
+                    <template v-else>
+                        <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                        {{state.phase}}
+                    </template>
+                </button>
+            </form>
+
+            <!-- Progress -->
+            <div v-if="state.loading" class="px-4 py-2 bg-blue-50 border-b border-blue-100">
+                <div class="flex justify-between text-xs text-blue-600 mb-1">
+                    <span>{{state.phase}}</span>
+                    <span v-if="state.total">{{state.progress}}/{{state.total}}</span>
+                </div>
+                <div class="h-1.5 bg-blue-100 rounded-full overflow-hidden">
+                    <div class="h-full bg-blue-500 rounded-full transition-all duration-300"
+                        :style="{width: (state.total ? state.progress/state.total*100 : 0)+'%'}"></div>
+                </div>
+            </div>
+
+            <!-- Activity Log -->
+            <div class="flex-1 flex flex-col min-h-0">
+                <div class="px-4 py-2 text-xs font-medium text-gray-500 flex items-center justify-between border-b border-gray-100">
+                    <span>Activity Log</span>
+                    <div class="flex items-center gap-2">
+                        <button v-if="logs.length" @click="copyLogs" class="text-blue-500 hover:text-blue-700 flex items-center gap-0.5" title="Copy logs">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                            Copy
+                        </button>
+                        <button v-if="logs.length" @click="logs=[]" class="text-gray-400 hover:text-gray-600">Clear</button>
+                    </div>
+                </div>
+                <div ref="logPanel" class="flex-1 bg-gray-900 p-3 overflow-y-auto log-panel font-mono text-[11px] leading-relaxed min-h-[400px] max-h-[600px]">
+                    <div v-if="!logs.length" class="text-gray-600 italic">Waiting for action...</div>
+                    <div v-for="(l,i) in logs" :key="i"
+                        :class="{'text-green-400':l.type==='success','text-red-400':l.type==='error','text-yellow-400':l.type==='warn','text-gray-400':l.type==='info'}">
+                        <span class="text-gray-600">[{{l.time}}]</span> {{l.msg}}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Test Parser -->
+            <details class="border-t border-gray-200">
+                <summary class="px-4 py-2 text-xs font-medium text-gray-500 cursor-pointer hover:bg-gray-50 select-none">
+                    Test Parser (paste sample text)
+                </summary>
+                <div class="p-3 space-y-2">
+                    <textarea v-model="testInput" rows="6" placeholder="Paste a Jira comment here to test parsing..."
+                        class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md font-mono resize-y outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                    <button @click="runTestParse" type="button"
+                        class="w-full py-1.5 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200 transition">
+                        Test Parse
+                    </button>
+                    <pre v-if="testOutput" class="bg-gray-50 border border-gray-200 rounded p-2 text-xs font-mono overflow-x-auto max-h-40 whitespace-pre-wrap">{{testOutput}}</pre>
+                </div>
+            </details>
+        </aside>
+
+        <!-- Sidebar overlay (mobile) -->
+        <div v-if="sidebarOpen" @click="sidebarOpen=false"
+            class="fixed inset-0 bg-black/30 z-20 lg:hidden"></div>
+
+        <!-- ─── MAIN CONTENT ─── -->
+        <main class="flex-1 flex flex-col overflow-hidden">
+
+            <!-- Error Banner -->
+            <div v-if="state.error" class="mx-4 mt-4 bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
+                <svg class="w-5 h-5 text-red-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+                <div class="flex-1">
+                    <p class="text-sm font-medium text-red-800">Request Failed</p>
+                    <p class="text-xs text-red-600 mt-0.5">{{state.error}}</p>
+                </div>
+                <button @click="state.error=''" class="text-red-400 hover:text-red-600">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+
+            <!-- Toolbar -->
+            <div v-if="hasResults" class="px-4 pt-4 pb-2 flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-1">
+                    <button @click="viewMode='cards'" :class="viewMode==='cards'?'bg-blue-100 text-blue-700':'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                        class="px-3 py-1 rounded-l-md text-xs font-medium transition">Cards</button>
+                    <button @click="viewMode='json'" :class="viewMode==='json'?'bg-blue-100 text-blue-700':'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                        class="px-3 py-1 text-xs font-medium transition">JSON</button>
+                    <button @click="viewMode='byLang'" :class="viewMode==='byLang'?'bg-blue-100 text-blue-700':'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                        class="px-3 py-1 rounded-r-md text-xs font-medium transition">By Language</button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button v-if="viewMode==='cards'" @click="expandAll" class="text-xs text-blue-600 hover:text-blue-800 hover:underline">Expand All</button>
+                    <button v-if="viewMode==='cards'" @click="collapseAll" class="text-xs text-blue-600 hover:text-blue-800 hover:underline">Collapse All</button>
+                    <button @click="copyJSON" class="flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200 transition">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                        {{copyLabel}}
+                    </button>
+                    <button @click="downloadJSON" class="flex items-center gap-1 px-2.5 py-1 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 transition">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                        Export JSON
+                    </button>
+                </div>
+            </div>
+
+            <!-- Results Area -->
+            <div class="flex-1 overflow-y-auto px-4 pb-6">
+
+                <!-- ═══ CARDS VIEW ═══ -->
+                <div v-if="viewMode==='cards' && hasResults" class="space-y-3 mt-2">
+                    <div v-for="(langs, issueKey) in results" :key="issueKey"
+                        class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                        <!-- Issue Header -->
+                        <div @click="toggleIssue(issueKey)"
+                            class="flex items-center justify-between px-4 py-2.5 cursor-pointer hover:bg-gray-50 transition select-none">
+                            <div class="flex items-center gap-2.5">
+                                <svg class="w-4 h-4 text-gray-400 transition-transform duration-200" :class="{'rotate-90':expanded.has(issueKey)}"
+                                    fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                                <span class="font-semibold text-blue-600 text-sm">{{issueKey}}</span>
+                                <span v-if="issueMeta[issueKey]" class="text-xs text-gray-500 truncate max-w-xs hidden sm:inline">{{issueMeta[issueKey].summary}}</span>
+                            </div>
+                            <div class="flex gap-1 shrink-0">
+                                <span v-for="lang in Object.keys(langs)" :key="lang"
+                                    class="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[10px] font-medium">
+                                    {{lang}} <span class="text-indigo-400">({{langs[lang].length}})</span>
+                                </span>
+                            </div>
+                        </div>
+                        <!-- Issue Body -->
+                        <div v-show="expanded.has(issueKey)" class="border-t border-gray-100">
+                            <div v-for="(keys, lang) in langs" :key="lang" class="px-4 py-2.5 border-b border-gray-50 last:border-b-0">
+                                <div class="flex items-center justify-between mb-1.5">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-semibold text-gray-700 bg-gray-100 px-2 py-0.5 rounded">{{lang}}</span>
+                                        <span class="text-[10px] text-gray-400">{{keys.length}} key{{keys.length>1?'s':''}}</span>
+                                    </div>
+                                    <button @click.stop="copyText(keys.join('\n'))"
+                                        class="text-[10px] text-blue-500 hover:text-blue-700 hover:underline">copy keys</button>
+                                </div>
+                                <div class="bg-gray-50 rounded border border-gray-100 p-2 font-mono text-[11px] text-gray-600 leading-relaxed max-h-48 overflow-y-auto">
+                                    <div v-for="k in keys" :key="k" class="break-all hover:text-gray-900 hover:bg-yellow-50 px-1 rounded transition">{{k}}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ═══ JSON VIEW ═══ -->
+                <div v-if="viewMode==='json' && hasResults" class="mt-2">
+                    <pre class="bg-gray-900 text-green-400 rounded-lg p-4 text-xs font-mono overflow-auto max-h-[calc(100vh-200px)] leading-relaxed">{{resultJSON}}</pre>
+                </div>
+
+                <!-- ═══ BY LANGUAGE VIEW ═══ -->
+                <div v-if="viewMode==='byLang' && hasResults" class="space-y-3 mt-2">
+                    <div v-for="(issueKeys, lang) in byLangData" :key="lang"
+                        class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                        <div class="px-4 py-2.5 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="font-semibold text-indigo-700 text-sm">{{lang}}</span>
+                                <span class="text-[10px] text-indigo-400">{{byLangStats[lang].totalKeys}} unique keys across {{byLangStats[lang].issueCount}} issue(s)</span>
+                            </div>
+                            <button @click.stop="copyText(byLangAllKeys[lang].join('\n'))"
+                                class="text-[10px] text-indigo-500 hover:text-indigo-700 hover:underline">copy all keys</button>
+                        </div>
+                        <div class="p-3">
+                            <div v-for="(keys, ik) in issueKeys" :key="ik" class="mb-2 last:mb-0">
+                                <div class="text-xs text-gray-500 mb-0.5 font-medium">{{ik}}</div>
+                                <div class="bg-gray-50 rounded border border-gray-100 p-1.5 font-mono text-[11px] text-gray-600 leading-relaxed">
+                                    <div v-for="k in keys" :key="k" class="break-all px-1">{{k}}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ═══ EMPTY STATE ═══ -->
+                <div v-if="!hasResults && !state.loading" class="flex flex-col items-center justify-center h-full py-20 text-gray-400">
+                    <svg class="w-20 h-20 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    <p class="text-lg font-medium text-gray-500">No results yet</p>
+                    <p class="text-sm mt-1">Configure Jira connection and run a JQL query to extract keys.</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast -->
+    <div v-if="toast" class="fixed bottom-4 right-4 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm flex items-center gap-2 z-50 animate-bounce">
+        <svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+        {{toast}}
+    </div>
+</div>
+
+<script>
+const { createApp, ref, reactive, computed, watch, onMounted, nextTick } = Vue;
+
+createApp({
+    setup() {
+        // ═══════════════════════════════════════
+        //  STATE
+        // ═══════════════════════════════════════
+        const config = reactive({
+            domain:     localStorage.getItem('jlke_domain') || '',
+            authMode:   localStorage.getItem('jlke_authMode') || 'pat',
+            email:      localStorage.getItem('jlke_email') || '',
+            apiToken:   '',
+            jql:        localStorage.getItem('jlke_jql') || '',
+            useProxy:   localStorage.getItem('jlke_useProxy') !== 'false',
+            proxyUrl:   localStorage.getItem('jlke_proxyUrl') || 'http://localhost:3001',
+            keyPattern: localStorage.getItem('jlke_keyPattern') || '',
+        });
+
+        const state = reactive({ loading: false, phase: '', progress: 0, total: 0, error: '' });
+        const results    = ref({});
+        const issueMeta  = ref({});
+        const logs       = ref([]);
+        const expanded   = ref(new Set());
+        const showToken  = ref(false);
+        const sidebarOpen = ref(false);
+        const viewMode   = ref('cards');
+        const toast      = ref('');
+        const copyLabel  = ref('Copy JSON');
+        const logPanel   = ref(null);
+        const testInput  = ref('');
+        const testOutput = ref('');
+
+        // ═══════════════════════════════════════
+        //  COMPUTED
+        // ═══════════════════════════════════════
+        const hasResults = computed(() => Object.keys(results.value).length > 0);
+
+        const stats = computed(() => {
+            const r = results.value;
+            let langSet = new Set(), keyCount = 0;
+            for (const langs of Object.values(r)) {
+                for (const [lang, keys] of Object.entries(langs)) {
+                    langSet.add(lang);
+                    keyCount += keys.length;
+                }
+            }
+            return { issueCount: Object.keys(r).length, langCount: langSet.size, keyCount };
+        });
+
+        const resultJSON = computed(() => JSON.stringify(results.value, null, 2));
+
+        const byLangData = computed(() => {
+            const out = {};
+            for (const [ik, langs] of Object.entries(results.value)) {
+                for (const [lang, keys] of Object.entries(langs)) {
+                    if (!out[lang]) out[lang] = {};
+                    out[lang][ik] = keys;
+                }
+            }
+            return out;
+        });
+
+        const byLangAllKeys = computed(() => {
+            const out = {};
+            for (const [lang, issues] of Object.entries(byLangData.value)) {
+                const set = new Set();
+                for (const keys of Object.values(issues)) keys.forEach(k => set.add(k));
+                out[lang] = [...set];
+            }
+            return out;
+        });
+
+        const byLangStats = computed(() => {
+            const out = {};
+            for (const [lang, issues] of Object.entries(byLangData.value)) {
+                out[lang] = { issueCount: Object.keys(issues).length, totalKeys: byLangAllKeys.value[lang].length };
+            }
+            return out;
+        });
+
+        // ═══════════════════════════════════════
+        //  LOGGING
+        // ═══════════════════════════════════════
+        function log(msg, type = 'info') {
+            logs.value.push({ msg, type, time: new Date().toLocaleTimeString() });
+            nextTick(() => { if (logPanel.value) logPanel.value.scrollTop = logPanel.value.scrollHeight; });
+        }
+
+        // ═══════════════════════════════════════
+        //  JIRA API
+        // ═══════════════════════════════════════
+        function saveConfig() {
+            localStorage.setItem('jlke_domain', config.domain);
+            localStorage.setItem('jlke_authMode', config.authMode);
+            localStorage.setItem('jlke_email', config.email);
+            localStorage.setItem('jlke_jql', config.jql);
+            localStorage.setItem('jlke_useProxy', config.useProxy);
+            localStorage.setItem('jlke_proxyUrl', config.proxyUrl);
+            localStorage.setItem('jlke_keyPattern', config.keyPattern);
+        }
+
+        function buildUrl(path) {
+            const base = config.domain.replace(/\/+$/, '');
+            const full = base.startsWith('http') ? base + path : 'https://' + base + path;
+            if (config.useProxy) {
+                return config.proxyUrl.replace(/\/+$/, '') + '/proxy?url=' + encodeURIComponent(full);
+            }
+            return full;
+        }
+
+        function authHeader() {
+            if (config.authMode === 'pat') {
+                return 'Bearer ' + config.apiToken;
+            }
+            return 'Basic ' + btoa(config.email + ':' + config.apiToken);
+        }
+
+        async function jiraFetch(path) {
+            const url = buildUrl(path);
+            const resp = await fetch(url, {
+                headers: { 'Authorization': authHeader(), 'Accept': 'application/json' }
+            });
+            if (!resp.ok) {
+                let detail = resp.statusText;
+                try { const body = await resp.json(); detail = body.errorMessages?.join('; ') || body.message || detail; } catch {}
+                throw new Error(`HTTP ${resp.status}: ${detail}`);
+            }
+            return resp.json();
+        }
+
+        async function fetchAllIssues() {
+            state.loading = true;
+            state.error = '';
+            state.phase = 'Connecting...';
+            state.progress = 0;
+            state.total = 0;
+            results.value = {};
+            issueMeta.value = {};
+            logs.value = [];
+            saveConfig();
+
+            try {
+                log('Starting Jira search...');
+                let startAt = 0, maxResults = 50, allIssues = [];
+
+                // Paginated fetch
+                while (true) {
+                    state.phase = `Fetching issues (${startAt})...`;
+                    const path = `/rest/api/2/search?jql=${encodeURIComponent(config.jql)}&fields=key,summary,description,comment,status&startAt=${startAt}&maxResults=${maxResults}`;
+                    log(`GET issues startAt=${startAt}`);
+                    const data = await jiraFetch(path);
+                    allIssues = allIssues.concat(data.issues || []);
+                    state.total = data.total || 0;
+                    state.progress = allIssues.length;
+                    log(`Received ${(data.issues||[]).length} issues (${allIssues.length}/${data.total})`, 'success');
+                    if (allIssues.length >= data.total || !(data.issues||[]).length) break;
+                    startAt += maxResults;
+                }
+
+                log(`Total issues: ${allIssues.length}`);
+
+                // Parse each issue
+                state.phase = 'Parsing...';
+                const parsed = {};
+
+                for (let i = 0; i < allIssues.length; i++) {
+                    const issue = allIssues[i];
+                    const key = issue.key;
+                    state.progress = i + 1;
+                    state.total = allIssues.length;
+                    const summary = issue.fields?.summary || '';
+                    log(`Parsing ${key}: ${summary.substring(0, 60)}...`);
+
+                    issueMeta.value[key] = {
+                        summary,
+                        status: issue.fields?.status?.name || ''
+                    };
+
+                    const issueResult = {};
+                    const titleLangs = extractLangsFromSummary(summary);
+                    if (titleLangs.length) log(`  [TITLE] detected languages: ${titleLangs.join(', ')}`, 'info');
+
+                    // Parse description
+                    const rawDesc = issue.fields?.description;
+                    const descText = extractText(rawDesc);
+                    if (descText) {
+                        log(`  [DESC] type=${typeof rawDesc}, len=${descText.length}, preview: ${descText.substring(0,150).replace(/\n/g,'\\n')}`, 'info');
+                        mergeInto(issueResult, parseContent(descText, titleLangs));
+                    } else {
+                        log(`  [DESC] empty or null`, 'warn');
+                    }
+
+                    // Parse comments
+                    let comments = issue.fields?.comment?.comments || [];
+                    const commentTotal = issue.fields?.comment?.total || comments.length;
+                    log(`  [COMMENTS] ${comments.length}/${commentTotal} loaded`);
+
+                    if (commentTotal > comments.length) {
+                        log(`  Fetching ${commentTotal - comments.length} more comments for ${key}...`);
+                        comments = await fetchAllComments(key);
+                    }
+
+                    for (let ci = 0; ci < comments.length; ci++) {
+                        const c = comments[ci];
+                        const rawBody = c.body;
+                        const txt = extractText(rawBody);
+                        if (txt) {
+                            log(`  [CMT#${ci}] type=${typeof rawBody}, len=${txt.length}, preview: ${txt.substring(0,200).replace(/\n/g,'\\n')}`, 'info');
+                            mergeInto(issueResult, parseContent(txt, titleLangs));
+                        }
+                    }
+
+                    if (Object.keys(issueResult).length > 0) {
+                        parsed[key] = issueResult;
+                        const langCount = Object.keys(issueResult).length;
+                        const keyCount = Object.values(issueResult).reduce((s, a) => s + a.length, 0);
+                        log(`  Found ${langCount} lang(s), ${keyCount} key(s)`, 'success');
+                    } else {
+                        log(`  No translation keys found`, 'warn');
+                    }
+                }
+
+                results.value = parsed;
+                state.phase = 'Done';
+                log(`Complete: ${Object.keys(parsed).length} issues with keys extracted.`, 'success');
+
+                if (Object.keys(parsed).length > 0) expandAll();
+
+            } catch (err) {
+                state.error = err.message;
+                log(`Error: ${err.message}`, 'error');
+                console.error(err);
+            } finally {
+                state.loading = false;
+            }
+        }
+
+        async function fetchAllComments(issueKey) {
+            let startAt = 0, maxResults = 100, all = [];
+            while (true) {
+                const data = await jiraFetch(`/rest/api/2/issue/${issueKey}/comment?startAt=${startAt}&maxResults=${maxResults}`);
+                all = all.concat(data.comments || []);
+                if (all.length >= (data.total || 0)) break;
+                startAt += maxResults;
+            }
+            return all;
+        }
+
+        // ═══════════════════════════════════════
+        //  TEXT EXTRACTION
+        // ═══════════════════════════════════════
+        function extractText(content) {
+            if (!content) return '';
+            if (typeof content === 'string') return content;
+            if (typeof content === 'object' && content.type === 'doc') return adfToText(content);
+            return String(content);
+        }
+
+        function adfToText(node) {
+            if (!node) return '';
+            let out = '';
+            if (node.type === 'text') out += node.text || '';
+            if (node.type === 'hardBreak') out += '\n';
+            if (Array.isArray(node.content)) {
+                for (const child of node.content) out += adfToText(child);
+            }
+            if (['paragraph','heading','codeBlock','listItem','blockquote','tableCell','tableRow','mediaSingle'].includes(node.type)) {
+                out += '\n';
+            }
+            return out;
+        }
+
+        // ═══════════════════════════════════════
+        //  PARSER — core logic
+        // ═══════════════════════════════════════
+        function extractLangsFromSummary(summary) {
+            const matches = summary.match(/\b([a-z]{2}-[A-Z]{2})\b/g);
+            return matches ? [...new Set(matches)] : [];
+        }
+
+        function parseContent(text, fallbackLangs = []) {
+            const result = {};
+            let currentLang = null;
+            const orphanKeys = [];
+
+            // Strip Jira wiki markup delimiters
+            const cleaned = text
+                .replace(/\{code[^}]*\}/g, '\n')
+                .replace(/\{noformat\}/g, '\n')
+                .replace(/\{panel[^}]*\}/g, '\n')
+                .replace(/\{color[^}]*\}/g, '')
+                .replace(/\{color\}/g, '')
+                .replace(/\{quote\}/g, '\n')
+                .replace(/h[1-6]\.\s*/gm, '');
+
+            const lines = cleaned.split(/\r?\n/);
+
+            // Language code: standalone BCP-47 tag (e.g. es-ES, pt-BR, ja-JP)
+            const langRe = /^\s*([a-z]{2}-[A-Z]{2})\s*$/;
+
+            // Build key regex
+            let keyRe;
+            const userPattern = (config.keyPattern || '').trim();
+            if (userPattern) {
+                try {
+                    keyRe = new RegExp('^\\s*(' + userPattern + ')\\s*$');
+                } catch {
+                    keyRe = null;
+                }
+            }
+            // Default patterns tried in order
+            const defaultKeyPatterns = [
+                /^\s*(RingCentral\.\S+)\s*$/,
+                /^\s*([\w]+\.uns\.\S+)\s*$/,
+                /^\s*([\w]+(?:\.[\w]+){2,}(?:__[\w]+)+)\s*$/,
+            ];
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+
+                // Language code detection
+                const lm = trimmed.match(langRe);
+                if (lm) {
+                    currentLang = lm[1];
+                    if (!result[currentLang]) result[currentLang] = [];
+                    continue;
+                }
+
+                // Key detection
+                let matchedKey = null;
+
+                // Try user pattern first
+                if (keyRe) {
+                    const m = trimmed.match(keyRe);
+                    if (m) matchedKey = m[1];
+                }
+
+                // Fallback to defaults
+                if (!matchedKey) {
+                    for (const pat of defaultKeyPatterns) {
+                        const m = trimmed.match(pat);
+                        if (m && m[1].length > 15) { matchedKey = m[1]; break; }
+                    }
+                }
+
+                if (matchedKey && !matchedKey.startsWith('//')) {
+                    if (currentLang) {
+                        if (!result[currentLang].includes(matchedKey))
+                            result[currentLang].push(matchedKey);
+                    } else {
+                        if (!orphanKeys.includes(matchedKey))
+                            orphanKeys.push(matchedKey);
+                    }
+                }
+            }
+
+            // Assign orphan keys to fallback languages (from issue title)
+            if (orphanKeys.length > 0 && fallbackLangs.length > 0) {
+                for (const lang of fallbackLangs) {
+                    if (!result[lang]) result[lang] = [];
+                    for (const k of orphanKeys) {
+                        if (!result[lang].includes(k)) result[lang].push(k);
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        function mergeInto(target, source) {
+            for (const [lang, keys] of Object.entries(source)) {
+                if (!target[lang]) target[lang] = [];
+                for (const k of keys) {
+                    if (!target[lang].includes(k)) target[lang].push(k);
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════
+        //  EXPORT
+        // ═══════════════════════════════════════
+        function showToast(msg) {
+            toast.value = msg;
+            setTimeout(() => { toast.value = ''; }, 2000);
+        }
+
+        async function copyLogs() {
+            const text = logs.value.map(l => `[${l.time}] ${l.msg}`).join('\n');
+            await copyText(text);
+        }
+
+        async function copyText(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                showToast('Copied to clipboard');
+            } catch {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                showToast('Copied to clipboard');
+            }
+        }
+
+        async function copyJSON() {
+            await copyText(resultJSON.value);
+            copyLabel.value = 'Copied!';
+            setTimeout(() => { copyLabel.value = 'Copy JSON'; }, 2000);
+        }
+
+        function downloadJSON() {
+            const blob = new Blob([resultJSON.value], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `jira-l10n-keys-${new Date().toISOString().slice(0,10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('JSON file downloaded');
+            log('Exported JSON file', 'success');
+        }
+
+        // ═══════════════════════════════════════
+        //  UI HELPERS
+        // ═══════════════════════════════════════
+        function toggleIssue(key) {
+            if (expanded.value.has(key)) expanded.value.delete(key); else expanded.value.add(key);
+        }
+        function expandAll()   { Object.keys(results.value).forEach(k => expanded.value.add(k)); }
+        function collapseAll() { expanded.value.clear(); }
+
+        function runTestParse() {
+            const out = parseContent(testInput.value);
+            testOutput.value = JSON.stringify(out, null, 2);
+        }
+
+        return {
+            config, state, results, issueMeta, logs, expanded, showToken, sidebarOpen,
+            viewMode, toast, copyLabel, logPanel, testInput, testOutput,
+            hasResults, stats, resultJSON, byLangData, byLangAllKeys, byLangStats,
+            fetchAllIssues, copyJSON, copyText, copyLogs, downloadJSON,
+            toggleIssue, expandAll, collapseAll, runTestParse, log
+        };
+    }
+}).mount('#app');
+</script>
+</body>
+</html>
