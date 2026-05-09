@@ -6,6 +6,7 @@
     <title>Jira L10N Key Extractor</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script>
     tailwind.config = {
         theme: { extend: { fontFamily: { mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'] } } }
@@ -304,6 +305,138 @@
                     </div>
                 </div>
 
+                <!-- ═══ WORKING FILES GENERATOR ═══ -->
+                <div v-if="hasResults" class="mt-6 bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                    <div class="px-5 py-3 bg-gradient-to-r from-emerald-50 to-teal-50 border-b border-emerald-100">
+                        <div class="flex items-center gap-2">
+                            <div class="w-6 h-6 bg-emerald-600 rounded flex items-center justify-center">
+                                <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h2 class="text-sm font-semibold text-emerald-800">Step 2: Generate Working Files Package</h2>
+                                <p class="text-xs text-emerald-600">Upload full English source ZIP, extract matching key-value pairs</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="p-5 space-y-4">
+                        <!-- Upload Zone -->
+                        <div @dragover.prevent="dragOver=true" @dragleave="dragOver=false"
+                             @drop.prevent="handleSourceZipDrop($event)"
+                             :class="dragOver ? 'border-emerald-400 bg-emerald-50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-gray-400'"
+                             class="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition"
+                             @click="openZipPicker()">
+                            <input ref="zipInput" type="file" accept=".zip" class="hidden"
+                                @change="handleSourceZipSelect($event)" @click.stop>
+                            <template v-if="!sourceZipName">
+                                <svg class="w-10 h-10 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                                </svg>
+                                <p class="text-sm text-gray-600 font-medium">Drop source ZIP here or click to browse</p>
+                                <p class="text-xs text-gray-400 mt-1">Upload the full English source package (e.g., FULL_en-us.zip)</p>
+                            </template>
+                            <template v-else>
+                                <div class="flex items-center justify-center gap-2">
+                                    <svg class="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                    </svg>
+                                    <span class="text-sm font-medium text-emerald-700">{{sourceZipName}}</span>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-1">Click or drop to replace</p>
+                            </template>
+                        </div>
+
+                        <!-- ZIP Info -->
+                        <div v-if="sourceZipInfo" class="bg-gray-50 rounded-lg border border-gray-200 p-3">
+                            <div class="text-xs font-medium text-gray-700 mb-2">Source Package Info</div>
+                            <div v-if="sourceZipInfo.error" class="text-xs text-red-600">{{sourceZipInfo.error}}</div>
+                            <template v-else>
+                                <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600">
+                                    <div>Root folder: <span class="font-mono text-gray-800">{{sourceZipInfo.rootFolder}}</span></div>
+                                    <div>Source files: <span class="font-semibold text-gray-800">{{sourceZipInfo.fileCount}}</span></div>
+                                    <div>Languages: <span class="font-semibold text-gray-800">{{sourceZipInfo.langFolders.length}}</span></div>
+                                    <div>Sub-path: <span class="font-mono text-gray-800 text-[10px]">{{sourceZipInfo.subPath}}</span></div>
+                                </div>
+                                <div class="mt-2 flex flex-wrap gap-1">
+                                    <span v-for="lang in sourceZipInfo.langFolders" :key="lang"
+                                        :class="langInResults(lang) ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'"
+                                        class="px-1.5 py-0.5 rounded text-[10px] font-medium">
+                                        {{lang}}
+                                    </span>
+                                </div>
+                                <p class="text-[10px] text-gray-400 mt-1.5">Green = matches extracted results</p>
+                            </template>
+                        </div>
+
+                        <!-- Generate Button -->
+                        <button v-if="sourceZipInfo && !sourceZipInfo.error && !genState.generating"
+                            @click="generateWorkingFiles"
+                            class="w-full bg-emerald-600 text-white py-2.5 rounded-md text-sm font-medium hover:bg-emerald-700 transition flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                            </svg>
+                            Generate Working Files Package
+                        </button>
+
+                        <!-- Progress -->
+                        <div v-if="genState.generating" class="space-y-2">
+                            <div class="flex justify-between text-xs text-emerald-600">
+                                <span>{{genState.phase}}</span>
+                                <span v-if="genState.total">{{genState.progress}}/{{genState.total}}</span>
+                            </div>
+                            <div class="h-2 bg-emerald-100 rounded-full overflow-hidden">
+                                <div class="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                                    :style="{width: (genState.total ? genState.progress/genState.total*100 : 0)+'%'}"></div>
+                            </div>
+                        </div>
+
+                        <!-- Error -->
+                        <div v-if="genState.error" class="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-700">
+                            {{genState.error}}
+                        </div>
+
+                        <!-- Result -->
+                        <div v-if="genResult" class="bg-emerald-50 border border-emerald-200 rounded-lg p-4 space-y-3">
+                            <div class="flex items-center gap-2">
+                                <svg class="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                <span class="text-sm font-semibold text-emerald-800">Working files package ready!</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-emerald-700">
+                                <div>Languages: <span class="font-semibold">{{genResult.stats.langs}}</span></div>
+                                <div>Tickets: <span class="font-semibold">{{genResult.stats.tickets}}</span></div>
+                                <div>Keys matched: <span class="font-semibold text-emerald-800">{{genResult.stats.matchedKeys}}</span></div>
+                                <div>Keys missing: <span class="font-semibold" :class="genResult.stats.missingKeys > 0 ? 'text-amber-600' : 'text-emerald-800'">{{genResult.stats.missingKeys}}</span></div>
+                                <div>Output files: <span class="font-semibold">{{genResult.stats.outputFiles}}</span></div>
+                            </div>
+
+                            <!-- Missing keys detail -->
+                            <details v-if="genResult.missingDetail && Object.keys(genResult.missingDetail).length > 0" class="text-xs">
+                                <summary class="cursor-pointer text-amber-600 hover:text-amber-700 font-medium">
+                                    View missing keys detail
+                                </summary>
+                                <div class="mt-2 bg-white rounded border border-amber-200 p-2 max-h-40 overflow-y-auto font-mono text-[10px]">
+                                    <div v-for="(keys, lang) in genResult.missingDetail" :key="lang" class="mb-1.5 last:mb-0">
+                                        <div class="text-amber-700 font-semibold">{{lang}}:</div>
+                                        <div v-for="k in keys" :key="k" class="text-gray-500 pl-2 break-all">{{k}}</div>
+                                    </div>
+                                </div>
+                            </details>
+
+                            <button @click="downloadWorkingFiles"
+                                class="w-full bg-emerald-600 text-white py-2 rounded-md text-sm font-medium hover:bg-emerald-700 transition flex items-center justify-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                </svg>
+                                Download Working Files ({{formatFileSize(genResult.blob.size)}})
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- ═══ EMPTY STATE ═══ -->
                 <div v-if="!hasResults && !state.loading" class="flex flex-col items-center justify-center h-full py-20 text-gray-400">
                     <svg class="w-20 h-20 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -355,6 +488,15 @@ createApp({
         const logPanel   = ref(null);
         const testInput  = ref('');
         const testOutput = ref('');
+
+        // Working Files Generator
+        const sourceZip     = ref(null);
+        const sourceZipName = ref('');
+        const sourceZipInfo = ref(null);
+        const dragOver      = ref(false);
+        const zipInput      = ref(null);
+        const genState = reactive({ generating: false, phase: '', progress: 0, total: 0, error: '' });
+        const genResult = ref(null);
 
         // ═══════════════════════════════════════
         //  COMPUTED
@@ -764,12 +906,238 @@ createApp({
             testOutput.value = JSON.stringify(out, null, 2);
         }
 
+        // ═══════════════════════════════════════
+        //  WORKING FILES GENERATOR
+        // ═══════════════════════════════════════
+        function langInResults(lang) { return !!byLangData.value[lang]; }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / 1048576).toFixed(1) + ' MB';
+        }
+
+        function openZipPicker() { if (zipInput.value) zipInput.value.click(); }
+
+        async function handleSourceZipDrop(event) {
+            dragOver.value = false;
+            const file = event.dataTransfer?.files?.[0];
+            if (file && file.name.toLowerCase().endsWith('.zip')) await loadSourceZip(file);
+        }
+
+        async function handleSourceZipSelect(event) {
+            const file = event.target?.files?.[0];
+            if (file) await loadSourceZip(file);
+            event.target.value = '';
+        }
+
+        async function loadSourceZip(file) {
+            try {
+                log(`Loading source ZIP: ${file.name} (${formatFileSize(file.size)})...`);
+                sourceZipName.value = file.name;
+                sourceZipInfo.value = null;
+                genResult.value = null;
+                genState.error = '';
+
+                const zip = await JSZip.loadAsync(file);
+                sourceZip.value = zip;
+
+                // Discover structure
+                const paths = Object.keys(zip.files).filter(p => !zip.files[p].dir);
+                const sourceJsonPaths = paths.filter(p => p.endsWith('/source.json') || p === 'source.json');
+
+                if (sourceJsonPaths.length === 0) {
+                    log('No source.json files found in ZIP', 'error');
+                    sourceZipInfo.value = { error: 'No source.json files found in this ZIP.' };
+                    return;
+                }
+
+                // Parse structure from paths — expected: <root>/en-US/<lang>/opus_jsons/<subpath>/source.json
+                const samplePath = sourceJsonPaths[0];
+                const parts = samplePath.split('/');
+                const enUsIdx = parts.indexOf('en-US');
+                let rootFolder = '', subPath = '';
+                const langFolders = new Set();
+
+                if (enUsIdx >= 0) {
+                    rootFolder = parts.slice(0, enUsIdx).join('/');
+                    for (const p of sourceJsonPaths) {
+                        const segs = p.split('/');
+                        const euIdx = segs.indexOf('en-US');
+                        if (euIdx >= 0 && euIdx + 1 < segs.length) {
+                            langFolders.add(segs[euIdx + 1]);
+                            if (!subPath) subPath = segs.slice(euIdx + 2, segs.length - 1).join('/');
+                        }
+                    }
+                } else {
+                    const langRe = /^[a-z]{2}-[A-Z]{2}$/;
+                    for (const p of sourceJsonPaths) {
+                        for (const seg of p.split('/')) { if (langRe.test(seg)) langFolders.add(seg); }
+                    }
+                    rootFolder = parts[0] || '';
+                    subPath = parts.slice(1, parts.length - 1).join('/');
+                }
+
+                sourceZipInfo.value = {
+                    rootFolder,
+                    langFolders: [...langFolders].sort(),
+                    subPath,
+                    fileCount: sourceJsonPaths.length,
+                    allPaths: sourceJsonPaths,
+                };
+
+                log(`Source ZIP loaded: ${sourceJsonPaths.length} source.json files, ${langFolders.size} languages`, 'success');
+                log(`  Root: ${rootFolder || '(none)'}, Sub-path: ${subPath}`, 'info');
+                log(`  Languages: ${[...langFolders].sort().join(', ')}`, 'info');
+            } catch (err) {
+                log(`Error loading ZIP: ${err.message}`, 'error');
+                sourceZipName.value = '';
+                sourceZipInfo.value = null;
+            }
+        }
+
+        async function generateWorkingFiles() {
+            if (!sourceZip.value || !sourceZipInfo.value) return;
+
+            genState.generating = true;
+            genState.error = '';
+            genState.phase = 'Initializing...';
+            genState.progress = 0;
+            genState.total = 0;
+            genResult.value = null;
+
+            try {
+                const info = sourceZipInfo.value;
+                const langs = Object.keys(byLangData.value);
+                const outputZip = new JSZip();
+                let totalMatched = 0, totalMissing = 0, outputFiles = 0;
+                const missingDetail = {};
+
+                genState.total = langs.length;
+                log('Starting working files generation...', 'info');
+                log(`  Target languages: ${langs.join(', ')}`, 'info');
+
+                for (let li = 0; li < langs.length; li++) {
+                    const lang = langs[li];
+                    genState.phase = `Processing ${lang} (${li + 1}/${langs.length})...`;
+                    genState.progress = li;
+
+                    // Find source.json files for this language
+                    let langPaths = info.allPaths.filter(p => {
+                        const segs = p.split('/');
+                        const euIdx = segs.indexOf('en-US');
+                        return euIdx >= 0 && segs[euIdx + 1] === lang;
+                    });
+                    if (langPaths.length === 0) {
+                        langPaths = info.allPaths.filter(p => p.includes('/' + lang + '/'));
+                    }
+
+                    if (langPaths.length === 0) {
+                        log(`  [${lang}] No source.json in ZIP — skipped`, 'warn');
+                        const issuesForLang = byLangData.value[lang];
+                        for (const keys of Object.values(issuesForLang)) {
+                            totalMissing += keys.length;
+                            if (!missingDetail[lang]) missingDetail[lang] = [];
+                            keys.forEach(k => { if (!missingDetail[lang].includes(k)) missingDetail[lang].push(k); });
+                        }
+                        continue;
+                    }
+
+                    // Read and merge all source data for this language
+                    let sourceData = {};
+                    for (const sp of langPaths) {
+                        try {
+                            const txt = await sourceZip.value.file(sp).async('string');
+                            Object.assign(sourceData, JSON.parse(txt));
+                        } catch (e) {
+                            log(`  [${lang}] Parse error: ${e.message}`, 'error');
+                        }
+                    }
+
+                    const sourceKeyCount = Object.keys(sourceData).length;
+                    log(`  [${lang}] ${sourceKeyCount} keys in source (${langPaths.length} file(s))`, 'info');
+
+                    // For each JIRA ticket with keys for this language
+                    const issuesForLang = byLangData.value[lang];
+                    for (const [ticket, keys] of Object.entries(issuesForLang)) {
+                        const matched = {};
+                        const missing = [];
+
+                        for (const key of keys) {
+                            if (sourceData.hasOwnProperty(key)) {
+                                matched[key] = sourceData[key];
+                                totalMatched++;
+                            } else {
+                                missing.push(key);
+                                totalMissing++;
+                            }
+                        }
+
+                        if (Object.keys(matched).length > 0) {
+                            const outPath = `${lang}/${ticket}/${info.subPath}/source.json`;
+                            outputZip.file(outPath, JSON.stringify(matched, null, 2));
+                            outputFiles++;
+                            log(`  [${lang}/${ticket}] ${Object.keys(matched).length} matched, ${missing.length} missing`,
+                                missing.length > 0 ? 'warn' : 'success');
+                        } else {
+                            log(`  [${lang}/${ticket}] No keys matched in source`, 'warn');
+                        }
+
+                        if (missing.length > 0) {
+                            if (!missingDetail[lang]) missingDetail[lang] = [];
+                            missing.forEach(k => { if (!missingDetail[lang].includes(k)) missingDetail[lang].push(k); });
+                        }
+                    }
+                }
+
+                genState.phase = 'Creating ZIP...';
+                genState.progress = genState.total;
+
+                const blob = await outputZip.generateAsync({
+                    type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 }
+                });
+                const filename = `working-files-${new Date().toISOString().slice(0, 10)}.zip`;
+
+                genResult.value = {
+                    blob, filename,
+                    stats: { langs: langs.length, tickets: Object.keys(results.value).length,
+                             matchedKeys: totalMatched, missingKeys: totalMissing, outputFiles },
+                    missingDetail,
+                };
+
+                log(`Package ready: ${outputFiles} files, ${formatFileSize(blob.size)}`, 'success');
+                log(`  Matched: ${totalMatched}, Missing: ${totalMissing}`, totalMissing > 0 ? 'warn' : 'success');
+            } catch (err) {
+                genState.error = err.message;
+                log(`Generation error: ${err.message}`, 'error');
+                console.error(err);
+            } finally {
+                genState.generating = false;
+            }
+        }
+
+        function downloadWorkingFiles() {
+            if (!genResult.value) return;
+            const url = URL.createObjectURL(genResult.value.blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = genResult.value.filename;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('Working files ZIP downloaded');
+            log('Downloaded working files package', 'success');
+        }
+
         return {
             config, state, results, issueMeta, logs, expanded, showToken, sidebarOpen,
             viewMode, toast, copyLabel, logPanel, testInput, testOutput,
+            sourceZipName, sourceZipInfo, dragOver, zipInput, genState, genResult,
             hasResults, stats, resultJSON, byLangData, byLangAllKeys, byLangStats,
             fetchAllIssues, copyJSON, copyText, copyLogs, downloadJSON,
-            toggleIssue, expandAll, collapseAll, runTestParse, log
+            toggleIssue, expandAll, collapseAll, runTestParse, log,
+            langInResults, formatFileSize, openZipPicker,
+            handleSourceZipDrop, handleSourceZipSelect,
+            generateWorkingFiles, downloadWorkingFiles,
         };
     }
 }).mount('#app');
