@@ -1,0 +1,16 @@
+{
+  "name": "jql2keys",
+  "version": "1.0.0",
+  "description": "Extract translation keys from Jira L10N bugs via JQL",
+  "main": "JQL2Keys.js",
+  "bin": "JQL2Keys.js",
+  "pkg": {
+    "assets": [
+      "jira-l10n-key-extractor.html"
+    ],
+    "targets": [
+      "node20-win-x64"
+    ],
+    "outputPath": "dist"
+  }
+}

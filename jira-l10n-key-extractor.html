@@ -338,7 +338,7 @@ createApp({
             apiToken:   localStorage.getItem('jlke_apiToken') || '',
             jql:        localStorage.getItem('jlke_jql') || '',
             useProxy:   localStorage.getItem('jlke_useProxy') !== 'false',
-            proxyUrl:   localStorage.getItem('jlke_proxyUrl') || 'http://localhost:3001',
+            proxyUrl:   localStorage.getItem('jlke_proxyUrl') || (location.protocol.startsWith('http') ? location.origin : 'http://localhost:3001'),
             keyPattern: localStorage.getItem('jlke_keyPattern') || '',
         });
 
