@@ -493,6 +493,56 @@
 <script>
 const { createApp, ref, reactive, computed, watch, onMounted, nextTick } = Vue;
 
+// ═══════════════════════════════════════
+//  LANGUAGE DETECTION TABLES
+// ═══════════════════════════════════════
+//   • Bracketed short codes used in Jira titles like [DE], [FR-CA], [419]
+//   • Jira "Language" custom-field display names like "German (Germany)"
+const SHORT_CODE_TO_BCP47 = {
+    DE: 'de-DE', FR: 'fr-FR', ES: 'es-ES', IT: 'it-IT', NL: 'nl-NL',
+    FI: 'fi-FI', KR: 'ko-KR', JP: 'ja-JP',
+    GB: 'en-GB', UK: 'en-GB', AU: 'en-AU', US: 'en-US',
+    CA: 'fr-CA',                          // RC convention: CA → French Canada
+    BR: 'pt-BR', PT: 'pt-PT',
+    CN: 'zh-CN', TW: 'zh-TW', HK: 'zh-HK',
+    '419': 'es-419',
+    // Lowercase variants for safety
+    de: 'de-DE', fr: 'fr-FR', es: 'es-ES', it: 'it-IT', nl: 'nl-NL',
+    fi: 'fi-FI', ko: 'ko-KR', ja: 'ja-JP', pt: 'pt-PT',
+    zh: 'zh-CN', en: 'en-US',
+};
+
+const LANG_NAME_TO_BCP47 = {
+    'german': 'de-DE',                          'german (germany)': 'de-DE',
+    'french': 'fr-FR',                          'french (france)': 'fr-FR',
+    'french (canada)': 'fr-CA',                 'canadian french': 'fr-CA',
+    'spanish': 'es-ES',                         'spanish (spain)': 'es-ES',
+    'spanish (latin america)': 'es-419',        'spanish (latin)': 'es-419',
+    'spanish (latam)': 'es-419',                'latin american spanish': 'es-419',
+    'italian': 'it-IT',                         'italian (italy)': 'it-IT',
+    'dutch': 'nl-NL',                           'dutch (netherlands)': 'nl-NL',
+    'portuguese': 'pt-BR',                      'portuguese (brazil)': 'pt-BR',
+    'portuguese (brasil)': 'pt-BR',             'brazilian portuguese': 'pt-BR',
+    'portuguese (portugal)': 'pt-PT',           'european portuguese': 'pt-PT',
+    'finnish': 'fi-FI',                         'finnish (finland)': 'fi-FI',
+    'korean': 'ko-KR',                          'korean (korea)': 'ko-KR',
+    'korean (south korea)': 'ko-KR',
+    'japanese': 'ja-JP',                        'japanese (japan)': 'ja-JP',
+    'chinese': 'zh-CN',                         'chinese (simplified)': 'zh-CN',
+    'chinese (china)': 'zh-CN',                 'simplified chinese': 'zh-CN',
+    'chinese (traditional)': 'zh-TW',           'chinese (taiwan)': 'zh-TW',
+    'traditional chinese': 'zh-TW',
+    'chinese (hong kong)': 'zh-HK',             'chinese (hk)': 'zh-HK',
+    'english (united kingdom)': 'en-GB',        'english (uk)': 'en-GB',
+    'english (u.k.)': 'en-GB',                  'english (great britain)': 'en-GB',
+    'english (united states)': 'en-US',         'english (us)': 'en-US',
+    'english (u.s.)': 'en-US',
+    'english (australia)': 'en-AU',
+};
+
+function normLangName(s) { return String(s).toLowerCase().trim().replace(/\s+/g, ' '); }
+function looksLikeBcp47(s) { return /^[a-z]{2,3}-(?:[A-Z]{2,4}|\d{3})$/.test(s); }
+
 createApp({
     setup() {
         // ═══════════════════════════════════════
@@ -649,7 +699,9 @@ createApp({
                 // Paginated fetch
                 while (true) {
                     state.phase = `Fetching issues (${startAt})...`;
-                    const path = `/rest/api/2/search?jql=${encodeURIComponent(config.jql)}&fields=key,summary,description,comment,status&startAt=${startAt}&maxResults=${maxResults}`;
+                    // *all returns every field including custom ones (e.g. Language). Comments are
+                    // appended explicitly because some Jira deployments don't include them in *all.
+                    const path = `/rest/api/2/search?jql=${encodeURIComponent(config.jql)}&fields=*all,comment&startAt=${startAt}&maxResults=${maxResults}`;
                     log(`GET issues startAt=${startAt}`);
                     const data = await jiraFetch(path);
                     allIssues = allIssues.concat(data.issues || []);
@@ -680,26 +732,38 @@ createApp({
                     };
 
                     const issueResult = {};
+
+                    // Detect target languages from THREE signals (combined):
+                    //   1. BCP-47 codes in title (e.g. "de-DE")
+                    //   2. Bracketed short codes in title (e.g. "[DE]", "[FR-CA]")
+                    //   3. Jira custom field values (e.g. Language = "German (Germany)")
                     const titleLangs = extractLangsFromSummary(summary);
-                    if (titleLangs.length) log(`  [TITLE] detected languages: ${titleLangs.join(', ')}`, 'info');
+                    const fieldLangs = [...extractLangsFromFields(issue.fields)];
+                    const detectedLangs = [...new Set([...titleLangs, ...fieldLangs])];
+                    if (detectedLangs.length) {
+                        log(`  [LANG] detected: ${detectedLangs.join(', ')}  (title=${titleLangs.length}, field=${fieldLangs.length})`, 'info');
+                    } else {
+                        log(`  [LANG] none detected from title or fields`, 'warn');
+                    }
 
                     // Parse description
                     const rawDesc = issue.fields?.description;
                     const descText = extractText(rawDesc);
                     if (descText) {
                         log(`  [DESC] type=${typeof rawDesc}, len=${descText.length}, preview: ${descText.substring(0,150).replace(/\n/g,'\\n')}`, 'info');
-                        mergeInto(issueResult, parseContent(descText, titleLangs));
+                        mergeInto(issueResult, parseContent(descText, detectedLangs));
                     } else {
                         log(`  [DESC] empty or null`, 'warn');
                     }
 
                     // Parse comments
                     let comments = issue.fields?.comment?.comments || [];
-                    const commentTotal = issue.fields?.comment?.total || comments.length;
+                    const commentTotal = (issue.fields?.comment && typeof issue.fields.comment.total === 'number')
+                        ? issue.fields.comment.total : comments.length;
                     log(`  [COMMENTS] ${comments.length}/${commentTotal} loaded`);
 
-                    if (commentTotal > comments.length) {
-                        log(`  Fetching ${commentTotal - comments.length} more comments for ${key}...`);
+                    if (commentTotal > comments.length || (commentTotal === 0 && !issue.fields?.comment)) {
+                        log(`  Fetching comments for ${key}...`);
                         comments = await fetchAllComments(key);
                     }
 
@@ -709,7 +773,7 @@ createApp({
                         const txt = extractText(rawBody);
                         if (txt) {
                             log(`  [CMT#${ci}] type=${typeof rawBody}, len=${txt.length}, preview: ${txt.substring(0,200).replace(/\n/g,'\\n')}`, 'info');
-                            mergeInto(issueResult, parseContent(txt, titleLangs));
+                            mergeInto(issueResult, parseContent(txt, detectedLangs));
                         }
                     }
 
@@ -777,8 +841,62 @@ createApp({
         //  PARSER — core logic
         // ═══════════════════════════════════════
         function extractLangsFromSummary(summary) {
-            const matches = summary.match(/\b([a-z]{2}-[A-Z]{2})\b/g);
-            return matches ? [...new Set(matches)] : [];
+            const langs = new Set();
+            if (!summary) return [];
+
+            // (a) Direct BCP-47 tags  e.g. "de-DE", "es-419"
+            const bcp47 = summary.match(/\b[a-z]{2,3}-(?:[A-Z]{2,4}|\d{3})\b/g);
+            if (bcp47) bcp47.forEach(l => langs.add(l));
+
+            // (b) Bracketed short codes  e.g. "[DE]", "[FR]", "[419]"
+            const bracketed = summary.match(/\[([A-Za-z]{2,4}|\d{3})\]/g);
+            if (bracketed) {
+                for (const b of bracketed) {
+                    const code = b.slice(1, -1);
+                    const upper = code.toUpperCase();
+                    if (SHORT_CODE_TO_BCP47[upper])      langs.add(SHORT_CODE_TO_BCP47[upper]);
+                    else if (SHORT_CODE_TO_BCP47[code])  langs.add(SHORT_CODE_TO_BCP47[code]);
+                }
+            }
+
+            return [...langs];
+        }
+
+        // Walk every field on a Jira issue looking for language values
+        // (display name like "German (Germany)" or BCP-47 like "de-DE")
+        function extractLangsFromFields(fields) {
+            const langs = new Set();
+            if (!fields || typeof fields !== 'object') return langs;
+
+            // Already parsed elsewhere or not relevant
+            const skip = new Set(['summary', 'description', 'comment',
+                                  'attachment', 'issuelinks', 'subtasks', 'worklog',
+                                  'reporter', 'assignee', 'creator', 'project']);
+
+            for (const [fieldId, value] of Object.entries(fields)) {
+                if (skip.has(fieldId)) continue;
+
+                const candidates = [];
+                const collect = (v) => {
+                    if (v === null || v === undefined) return;
+                    if (typeof v === 'string')      candidates.push(v);
+                    else if (typeof v === 'number') candidates.push(String(v));
+                    else if (Array.isArray(v))      v.forEach(collect);
+                    else if (typeof v === 'object') {
+                        if (v.value)            candidates.push(v.value);
+                        else if (v.name)        candidates.push(v.name);
+                        else if (v.displayName) candidates.push(v.displayName);
+                    }
+                };
+                collect(value);
+
+                for (const c of candidates) {
+                    const norm = normLangName(c);
+                    if (LANG_NAME_TO_BCP47[norm])       langs.add(LANG_NAME_TO_BCP47[norm]);
+                    else if (looksLikeBcp47(c))         langs.add(c);
+                }
+            }
+            return langs;
         }
 
         function parseContent(text, fallbackLangs = []) {
