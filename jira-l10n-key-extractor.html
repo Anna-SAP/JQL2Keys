@@ -335,7 +335,7 @@ createApp({
             domain:     localStorage.getItem('jlke_domain') || '',
             authMode:   localStorage.getItem('jlke_authMode') || 'pat',
             email:      localStorage.getItem('jlke_email') || '',
-            apiToken:   '',
+            apiToken:   localStorage.getItem('jlke_apiToken') || '',
             jql:        localStorage.getItem('jlke_jql') || '',
             useProxy:   localStorage.getItem('jlke_useProxy') !== 'false',
             proxyUrl:   localStorage.getItem('jlke_proxyUrl') || 'http://localhost:3001',
@@ -419,6 +419,7 @@ createApp({
             localStorage.setItem('jlke_domain', config.domain);
             localStorage.setItem('jlke_authMode', config.authMode);
             localStorage.setItem('jlke_email', config.email);
+            localStorage.setItem('jlke_apiToken', config.apiToken);
             localStorage.setItem('jlke_jql', config.jql);
             localStorage.setItem('jlke_useProxy', config.useProxy);
             localStorage.setItem('jlke_proxyUrl', config.proxyUrl);
