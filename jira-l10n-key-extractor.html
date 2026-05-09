@@ -358,8 +358,14 @@
                                     <div>Total files: <span class="font-semibold text-gray-800">{{sourceZipInfo.fileCount}}</span></div>
                                     <div>Usable files: <span class="font-semibold text-gray-800">{{sourceZipInfo.usableCount}}</span></div>
                                     <div>Skipped: <span class="font-semibold text-gray-500">{{sourceZipInfo.skippedCount}}</span></div>
-                                    <div>Languages: <span class="font-semibold text-gray-800">{{sourceZipInfo.langFolders.length}}</span></div>
+                                    <div>Per-lang dirs: <span class="font-semibold text-gray-800">{{sourceZipInfo.langFolders.length}}</span></div>
                                     <div>Builds: <span class="font-semibold text-gray-800">{{sourceZipInfo.builds.length}}</span></div>
+                                    <div class="col-span-2">
+                                        Global trunk (en-US/trunk):
+                                        <span :class="sourceZipInfo.hasGlobalTrunk ? 'text-emerald-700 font-semibold' : 'text-gray-500'">
+                                            {{sourceZipInfo.hasGlobalTrunk ? 'YES — applies to all target langs' : 'no'}}
+                                        </span>
+                                    </div>
                                 </div>
                                 <div class="mt-2">
                                     <div class="text-[10px] text-gray-500 mb-0.5">Languages found:</div>
@@ -970,7 +976,6 @@ createApp({
                 const zip = await JSZip.loadAsync(file);
                 sourceZip.value = zip;
 
-                // Find all source.json files
                 const allPaths = Object.keys(zip.files).filter(p => !zip.files[p].dir);
                 const sourceJsonPaths = allPaths.filter(p => p.endsWith('/source.json') || p === 'source.json');
 
@@ -980,16 +985,31 @@ createApp({
                     return;
                 }
 
-                // Parse each path into (lang, build, version, path)
-                // Target structure (USE):  <root>/<lang>/<build>/opus_jsons/[<version>/]source.json
-                // Skip structure  (SKIP): <root>/en-US/<lang>/opus_jsons/[<version>/]source.json (English source content)
-                // <build> is typically 'trunk' or '<lang>' (the same language code)
-                const langRe = /^[a-z]{2,3}-[A-Z]{2,4}$/;
-                const langBuildMap = {};   // { lang: { build: { plain: path|null, versioned: { ver: path } } } }
+                // ───────────────────────────────────────
+                //  Three OPUS source-package scenarios
+                //   (A) Global trunk  : <root>/en-US/trunk/opus_jsons/[<ver>/]source.json
+                //                       → applies to ALL target langs as 'trunk' build
+                //   (B) Brand-specific: <root>/en-US/<lang>/opus_jsons/[<ver>/]source.json (lang ≠ en-US)
+                //                       → applies to <lang> as '<lang>' build
+                //   (C) Per-lang build: <root>/<lang>/<build>/opus_jsons/[<ver>/]source.json (lang ≠ en-US)
+                //                       → applies to <lang> as '<build>' build
+                // ───────────────────────────────────────
+                const langRe = /^[a-z]{2,3}-(?:[A-Z]{2,4}|[0-9]{3})$/;
+                const langBuildMap = {};
+                const globalTrunk = { plain: null, versioned: {} };
                 const allLangs = new Set();
                 const allBuilds = new Set();
                 const skipped = [];
                 let rootFolder = '';
+
+                function addToMap(lang, build, path, isVersioned, version) {
+                    if (!langBuildMap[lang]) langBuildMap[lang] = {};
+                    if (!langBuildMap[lang][build]) langBuildMap[lang][build] = { plain: null, versioned: {} };
+                    if (isVersioned) langBuildMap[lang][build].versioned[version] = path;
+                    else langBuildMap[lang][build].plain = path;
+                    allLangs.add(lang);
+                    allBuilds.add(build);
+                }
 
                 for (const p of sourceJsonPaths) {
                     const segs = p.split('/');
@@ -997,42 +1017,35 @@ createApp({
 
                     if (opusIdx < 2) { skipped.push(p); continue; }
 
-                    const buildOrLang = segs[opusIdx - 1];   // segment right before opus_jsons
-                    const langOrSrc   = segs[opusIdx - 2];   // segment two before opus_jsons
-
-                    let lang = null, build = null;
-                    if (langRe.test(langOrSrc) && langOrSrc !== 'en-US') {
-                        // Structure #2: <root>/<lang>/<build>/opus_jsons/...  ← USE
-                        lang = langOrSrc;
-                        build = buildOrLang;
-                    } else if (langOrSrc === 'en-US' && langRe.test(buildOrLang)) {
-                        // Structure #1: <root>/en-US/<lang>/opus_jsons/...  ← SKIP (source-language content)
-                        skipped.push(p);
-                        continue;
-                    } else {
-                        skipped.push(p);
-                        continue;
-                    }
-
+                    const parent      = segs[opusIdx - 1];
+                    const grandparent = segs[opusIdx - 2];
                     const isVersioned = opusIdx + 1 < segs.length - 1;
-                    const version = isVersioned ? segs[opusIdx + 1] : null;
+                    const version     = isVersioned ? segs[opusIdx + 1] : null;
 
-                    if (!langBuildMap[lang]) langBuildMap[lang] = {};
-                    if (!langBuildMap[lang][build]) langBuildMap[lang][build] = { plain: null, versioned: {} };
-
-                    if (isVersioned) {
-                        langBuildMap[lang][build].versioned[version] = p;
+                    if (grandparent === 'en-US') {
+                        if (parent === 'trunk') {
+                            // (A) Global trunk
+                            if (isVersioned) globalTrunk.versioned[version] = p;
+                            else globalTrunk.plain = p;
+                            allBuilds.add('trunk');
+                            if (!rootFolder) rootFolder = segs.slice(0, opusIdx - 2).join('/');
+                        } else if (langRe.test(parent) && parent !== 'en-US') {
+                            // (B) Brand-specific
+                            addToMap(parent, parent, p, isVersioned, version);
+                            if (!rootFolder) rootFolder = segs.slice(0, opusIdx - 2).join('/');
+                        } else {
+                            skipped.push(p);
+                        }
+                    } else if (langRe.test(grandparent) && grandparent !== 'en-US') {
+                        // (C) Per-lang build
+                        addToMap(grandparent, parent, p, isVersioned, version);
+                        if (!rootFolder) rootFolder = segs.slice(0, opusIdx - 2).join('/');
                     } else {
-                        langBuildMap[lang][build].plain = p;
-                    }
-
-                    allLangs.add(lang);
-                    allBuilds.add(build);
-
-                    if (!rootFolder) {
-                        rootFolder = segs.slice(0, opusIdx - 2).join('/');
+                        skipped.push(p);
                     }
                 }
+
+                const hasGlobalTrunk = !!(globalTrunk.plain || Object.keys(globalTrunk.versioned).length > 0);
 
                 sourceZipInfo.value = {
                     rootFolder,
@@ -1042,14 +1055,16 @@ createApp({
                     usableCount: sourceJsonPaths.length - skipped.length,
                     skippedCount: skipped.length,
                     langBuildMap,
+                    globalTrunk,
+                    hasGlobalTrunk,
                 };
 
                 log(`Source ZIP loaded: ${sourceJsonPaths.length} source.json files`, 'success');
-                log(`  Usable (target-lang/build/opus_jsons/...): ${sourceJsonPaths.length - skipped.length}`, 'info');
-                log(`  Skipped (en-US source content / unparseable): ${skipped.length}`, 'info');
+                log(`  Usable: ${sourceJsonPaths.length - skipped.length}, skipped: ${skipped.length}`, 'info');
                 log(`  Root: ${rootFolder || '(none)'}`, 'info');
-                log(`  Languages: ${[...allLangs].sort().join(', ')}`, 'info');
-                log(`  Builds: ${[...allBuilds].sort().join(', ')}`, 'info');
+                log(`  Global trunk (en-US/trunk): ${hasGlobalTrunk ? 'YES — applies to all target langs' : 'no'}`, 'info');
+                log(`  Per-lang dirs: ${[...allLangs].sort().join(', ') || '(none)'}`, 'info');
+                log(`  Builds discovered: ${[...allBuilds].sort().join(', ') || '(none)'}`, 'info');
             } catch (err) {
                 log(`Error loading ZIP: ${err.message}`, 'error');
                 sourceZipName.value = '';
@@ -1080,35 +1095,60 @@ createApp({
 
                 log('Starting working files generation...', 'info');
                 log(`  Tickets: ${tickets.length}, total (ticket,lang) tasks: ${totalTasks}`, 'info');
+                if (info.hasGlobalTrunk) {
+                    log(`  Global trunk path will be merged into every '<lang>/trunk' lookup`, 'info');
+                }
 
-                // Cache loaded source data per (lang|build) to avoid re-reading large files
+                // Cache loaded source data per (lang|build)
                 const cache = {};
+
+                function pickPath(buildInfo) {
+                    if (!buildInfo) return null;
+                    if (buildInfo.plain) return buildInfo.plain;
+                    const vers = Object.keys(buildInfo.versioned).sort();
+                    return vers.length > 0 ? buildInfo.versioned[vers[vers.length - 1]] : null;
+                }
+                function pickGlobalTrunkPath() {
+                    if (!info.hasGlobalTrunk) return null;
+                    if (info.globalTrunk.plain) return info.globalTrunk.plain;
+                    const vers = Object.keys(info.globalTrunk.versioned).sort();
+                    return vers.length > 0 ? info.globalTrunk.versioned[vers[vers.length - 1]] : null;
+                }
+
                 async function getSourceData(lang, build) {
-                    const key = lang + '|' + build;
-                    if (cache[key] !== undefined) return cache[key];
+                    const cacheKey = lang + '|' + build;
+                    if (cache[cacheKey] !== undefined) return cache[cacheKey];
 
-                    const buildInfo = info.langBuildMap[lang]?.[build];
-                    if (!buildInfo) { cache[key] = null; return null; }
+                    const paths = [];
+                    const langPath = pickPath(info.langBuildMap[lang]?.[build]);
+                    if (langPath) paths.push(langPath);
 
-                    // Prefer the plain path (no version subfolder); fall back to versioned
-                    let path = buildInfo.plain;
-                    if (!path) {
-                        const versions = Object.keys(buildInfo.versioned);
-                        if (versions.length > 0) path = buildInfo.versioned[versions.sort().pop()];
+                    // Global trunk applies to every target lang's 'trunk' build
+                    if (build === 'trunk') {
+                        const gtPath = pickGlobalTrunkPath();
+                        if (gtPath && !paths.includes(gtPath)) paths.push(gtPath);
                     }
-                    if (!path) { cache[key] = null; return null; }
 
-                    try {
-                        const txt = await sourceZip.value.file(path).async('string');
-                        const data = JSON.parse(txt);
-                        cache[key] = data;
-                        log(`    [load] ${lang}/${build}: ${Object.keys(data).length} keys from ${path}`, 'info');
-                        return data;
-                    } catch (e) {
-                        log(`    [load] Failed ${path}: ${e.message}`, 'error');
-                        cache[key] = null;
-                        return null;
+                    if (paths.length === 0) { cache[cacheKey] = null; return null; }
+
+                    let merged = {};
+                    for (const path of paths) {
+                        try {
+                            const txt = await sourceZip.value.file(path).async('string');
+                            Object.assign(merged, JSON.parse(txt));
+                        } catch (e) {
+                            log(`    [load] Failed ${path}: ${e.message}`, 'error');
+                        }
                     }
+                    cache[cacheKey] = merged;
+                    log(`    [load] ${lang}/${build}: ${Object.keys(merged).length} keys from ${paths.length} file(s)`, 'info');
+                    return merged;
+                }
+
+                function getBuildsForLang(lang) {
+                    const builds = new Set(Object.keys(info.langBuildMap[lang] || {}));
+                    if (info.hasGlobalTrunk) builds.add('trunk');
+                    return [...builds];
                 }
 
                 let processed = 0;
@@ -1120,19 +1160,16 @@ createApp({
                         genState.progress = processed;
                         genState.phase = `Processing ${ticket}/${lang} (${processed}/${totalTasks})...`;
 
-                        const buildsForLang = info.langBuildMap[lang];
-                        if (!buildsForLang || Object.keys(buildsForLang).length === 0) {
-                            log(`  [${ticket}/${lang}] Lang not found in source ZIP — all keys missing`, 'warn');
+                        const buildNames = getBuildsForLang(lang);
+                        if (buildNames.length === 0) {
+                            log(`  [${ticket}/${lang}] No source available for this lang — all keys missing`, 'warn');
                             if (!missingDetail[lang]) missingDetail[lang] = [];
                             keys.forEach(k => { if (!missingDetail[lang].includes(k)) missingDetail[lang].push(k); });
                             totalMissing += keys.length;
                             continue;
                         }
 
-                        // Track which keys have been matched across all builds for this (ticket, lang)
                         const matchedKeys = new Set();
-                        const buildNames = Object.keys(buildsForLang);
-
                         for (const buildName of buildNames) {
                             const sourceData = await getSourceData(lang, buildName);
                             if (!sourceData) continue;
