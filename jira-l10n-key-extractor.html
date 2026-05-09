@@ -306,7 +306,7 @@
                 </div>
 
                 <!-- ═══ WORKING FILES GENERATOR ═══ -->
-                <div v-if="hasResults" class="mt-6 bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                <div class="mt-6 bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
                     <div class="px-5 py-3 bg-gradient-to-r from-emerald-50 to-teal-50 border-b border-emerald-100">
                         <div class="flex items-center gap-2">
                             <div class="w-6 h-6 bg-emerald-600 rounded flex items-center justify-center">
@@ -316,7 +316,7 @@
                             </div>
                             <div>
                                 <h2 class="text-sm font-semibold text-emerald-800">Step 2: Generate Working Files Package</h2>
-                                <p class="text-xs text-emerald-600">Upload full English source ZIP, extract matching key-value pairs</p>
+                                <p class="text-xs text-emerald-600">Upload full source ZIP (e.g., UNS.zip), then extract per-build key-value pairs</p>
                             </div>
                         </div>
                     </div>
@@ -334,8 +334,8 @@
                                 <svg class="w-10 h-10 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
                                 </svg>
-                                <p class="text-sm text-gray-600 font-medium">Drop source ZIP here or click to browse</p>
-                                <p class="text-xs text-gray-400 mt-1">Upload the full English source package (e.g., FULL_en-us.zip)</p>
+                                <p class="text-sm text-gray-600 font-medium">Drop full source ZIP here or click to browse</p>
+                                <p class="text-xs text-gray-400 mt-1">Upload latest full source package (e.g., UNS.zip / Web.zip / AP.zip)</p>
                             </template>
                             <template v-else>
                                 <div class="flex items-center justify-center gap-2">
@@ -354,24 +354,52 @@
                             <div v-if="sourceZipInfo.error" class="text-xs text-red-600">{{sourceZipInfo.error}}</div>
                             <template v-else>
                                 <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600">
-                                    <div>Root folder: <span class="font-mono text-gray-800">{{sourceZipInfo.rootFolder}}</span></div>
-                                    <div>Source files: <span class="font-semibold text-gray-800">{{sourceZipInfo.fileCount}}</span></div>
+                                    <div>Root folder: <span class="font-mono text-gray-800">{{sourceZipInfo.rootFolder || '(none)'}}</span></div>
+                                    <div>Total files: <span class="font-semibold text-gray-800">{{sourceZipInfo.fileCount}}</span></div>
+                                    <div>Usable files: <span class="font-semibold text-gray-800">{{sourceZipInfo.usableCount}}</span></div>
+                                    <div>Skipped: <span class="font-semibold text-gray-500">{{sourceZipInfo.skippedCount}}</span></div>
                                     <div>Languages: <span class="font-semibold text-gray-800">{{sourceZipInfo.langFolders.length}}</span></div>
-                                    <div>Sub-path: <span class="font-mono text-gray-800 text-[10px]">{{sourceZipInfo.subPath}}</span></div>
+                                    <div>Builds: <span class="font-semibold text-gray-800">{{sourceZipInfo.builds.length}}</span></div>
                                 </div>
-                                <div class="mt-2 flex flex-wrap gap-1">
-                                    <span v-for="lang in sourceZipInfo.langFolders" :key="lang"
-                                        :class="langInResults(lang) ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'"
-                                        class="px-1.5 py-0.5 rounded text-[10px] font-medium">
-                                        {{lang}}
-                                    </span>
+                                <div class="mt-2">
+                                    <div class="text-[10px] text-gray-500 mb-0.5">Languages found:</div>
+                                    <div class="flex flex-wrap gap-1">
+                                        <span v-for="lang in sourceZipInfo.langFolders" :key="lang"
+                                            :class="langInResults(lang) ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'"
+                                            class="px-1.5 py-0.5 rounded text-[10px] font-medium">
+                                            {{lang}}
+                                        </span>
+                                    </div>
                                 </div>
-                                <p class="text-[10px] text-gray-400 mt-1.5">Green = matches extracted results</p>
+                                <div class="mt-2">
+                                    <div class="text-[10px] text-gray-500 mb-0.5">Builds found:</div>
+                                    <div class="flex flex-wrap gap-1">
+                                        <span v-for="b in sourceZipInfo.builds" :key="b"
+                                            class="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[10px] font-mono">
+                                            {{b}}
+                                        </span>
+                                    </div>
+                                </div>
+                                <p class="text-[10px] text-gray-400 mt-1.5">Green language = present in extracted results &middot; Output path: &lt;ticket&gt;/&lt;lang&gt;/&lt;build&gt;/opus_jsons/source.json</p>
                             </template>
                         </div>
 
+                        <!-- Prerequisites prompt -->
+                        <div v-if="!sourceZipInfo || sourceZipInfo.error || !hasResults"
+                             class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700">
+                            <div class="font-semibold mb-1">Prerequisites:</div>
+                            <ul class="space-y-0.5 ml-4 list-disc">
+                                <li :class="hasResults ? 'text-emerald-700 line-through' : ''">
+                                    Run JQL extraction (Step 1) to get translation keys
+                                </li>
+                                <li :class="(sourceZipInfo && !sourceZipInfo.error) ? 'text-emerald-700 line-through' : ''">
+                                    Upload the full source ZIP above
+                                </li>
+                            </ul>
+                        </div>
+
                         <!-- Generate Button -->
-                        <button v-if="sourceZipInfo && !sourceZipInfo.error && !genState.generating"
+                        <button v-if="sourceZipInfo && !sourceZipInfo.error && hasResults && !genState.generating"
                             @click="generateWorkingFiles"
                             class="w-full bg-emerald-600 text-white py-2.5 rounded-md text-sm font-medium hover:bg-emerald-700 transition flex items-center justify-center gap-2">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -942,9 +970,9 @@ createApp({
                 const zip = await JSZip.loadAsync(file);
                 sourceZip.value = zip;
 
-                // Discover structure
-                const paths = Object.keys(zip.files).filter(p => !zip.files[p].dir);
-                const sourceJsonPaths = paths.filter(p => p.endsWith('/source.json') || p === 'source.json');
+                // Find all source.json files
+                const allPaths = Object.keys(zip.files).filter(p => !zip.files[p].dir);
+                const sourceJsonPaths = allPaths.filter(p => p.endsWith('/source.json') || p === 'source.json');
 
                 if (sourceJsonPaths.length === 0) {
                     log('No source.json files found in ZIP', 'error');
@@ -952,43 +980,76 @@ createApp({
                     return;
                 }
 
-                // Parse structure from paths — expected: <root>/en-US/<lang>/opus_jsons/<subpath>/source.json
-                const samplePath = sourceJsonPaths[0];
-                const parts = samplePath.split('/');
-                const enUsIdx = parts.indexOf('en-US');
-                let rootFolder = '', subPath = '';
-                const langFolders = new Set();
+                // Parse each path into (lang, build, version, path)
+                // Target structure (USE):  <root>/<lang>/<build>/opus_jsons/[<version>/]source.json
+                // Skip structure  (SKIP): <root>/en-US/<lang>/opus_jsons/[<version>/]source.json (English source content)
+                // <build> is typically 'trunk' or '<lang>' (the same language code)
+                const langRe = /^[a-z]{2,3}-[A-Z]{2,4}$/;
+                const langBuildMap = {};   // { lang: { build: { plain: path|null, versioned: { ver: path } } } }
+                const allLangs = new Set();
+                const allBuilds = new Set();
+                const skipped = [];
+                let rootFolder = '';
 
-                if (enUsIdx >= 0) {
-                    rootFolder = parts.slice(0, enUsIdx).join('/');
-                    for (const p of sourceJsonPaths) {
-                        const segs = p.split('/');
-                        const euIdx = segs.indexOf('en-US');
-                        if (euIdx >= 0 && euIdx + 1 < segs.length) {
-                            langFolders.add(segs[euIdx + 1]);
-                            if (!subPath) subPath = segs.slice(euIdx + 2, segs.length - 1).join('/');
-                        }
+                for (const p of sourceJsonPaths) {
+                    const segs = p.split('/');
+                    const opusIdx = segs.lastIndexOf('opus_jsons');
+
+                    if (opusIdx < 2) { skipped.push(p); continue; }
+
+                    const buildOrLang = segs[opusIdx - 1];   // segment right before opus_jsons
+                    const langOrSrc   = segs[opusIdx - 2];   // segment two before opus_jsons
+
+                    let lang = null, build = null;
+                    if (langRe.test(langOrSrc) && langOrSrc !== 'en-US') {
+                        // Structure #2: <root>/<lang>/<build>/opus_jsons/...  ← USE
+                        lang = langOrSrc;
+                        build = buildOrLang;
+                    } else if (langOrSrc === 'en-US' && langRe.test(buildOrLang)) {
+                        // Structure #1: <root>/en-US/<lang>/opus_jsons/...  ← SKIP (source-language content)
+                        skipped.push(p);
+                        continue;
+                    } else {
+                        skipped.push(p);
+                        continue;
                     }
-                } else {
-                    const langRe = /^[a-z]{2}-[A-Z]{2}$/;
-                    for (const p of sourceJsonPaths) {
-                        for (const seg of p.split('/')) { if (langRe.test(seg)) langFolders.add(seg); }
+
+                    const isVersioned = opusIdx + 1 < segs.length - 1;
+                    const version = isVersioned ? segs[opusIdx + 1] : null;
+
+                    if (!langBuildMap[lang]) langBuildMap[lang] = {};
+                    if (!langBuildMap[lang][build]) langBuildMap[lang][build] = { plain: null, versioned: {} };
+
+                    if (isVersioned) {
+                        langBuildMap[lang][build].versioned[version] = p;
+                    } else {
+                        langBuildMap[lang][build].plain = p;
                     }
-                    rootFolder = parts[0] || '';
-                    subPath = parts.slice(1, parts.length - 1).join('/');
+
+                    allLangs.add(lang);
+                    allBuilds.add(build);
+
+                    if (!rootFolder) {
+                        rootFolder = segs.slice(0, opusIdx - 2).join('/');
+                    }
                 }
 
                 sourceZipInfo.value = {
                     rootFolder,
-                    langFolders: [...langFolders].sort(),
-                    subPath,
+                    langFolders: [...allLangs].sort(),
+                    builds: [...allBuilds].sort(),
                     fileCount: sourceJsonPaths.length,
-                    allPaths: sourceJsonPaths,
+                    usableCount: sourceJsonPaths.length - skipped.length,
+                    skippedCount: skipped.length,
+                    langBuildMap,
                 };
 
-                log(`Source ZIP loaded: ${sourceJsonPaths.length} source.json files, ${langFolders.size} languages`, 'success');
-                log(`  Root: ${rootFolder || '(none)'}, Sub-path: ${subPath}`, 'info');
-                log(`  Languages: ${[...langFolders].sort().join(', ')}`, 'info');
+                log(`Source ZIP loaded: ${sourceJsonPaths.length} source.json files`, 'success');
+                log(`  Usable (target-lang/build/opus_jsons/...): ${sourceJsonPaths.length - skipped.length}`, 'info');
+                log(`  Skipped (en-US source content / unparseable): ${skipped.length}`, 'info');
+                log(`  Root: ${rootFolder || '(none)'}`, 'info');
+                log(`  Languages: ${[...allLangs].sort().join(', ')}`, 'info');
+                log(`  Builds: ${[...allBuilds].sort().join(', ')}`, 'info');
             } catch (err) {
                 log(`Error loading ZIP: ${err.message}`, 'error');
                 sourceZipName.value = '';
@@ -997,7 +1058,7 @@ createApp({
         }
 
         async function generateWorkingFiles() {
-            if (!sourceZip.value || !sourceZipInfo.value) return;
+            if (!sourceZip.value || !sourceZipInfo.value || !hasResults.value) return;
 
             genState.generating = true;
             genState.error = '';
@@ -1008,84 +1069,98 @@ createApp({
 
             try {
                 const info = sourceZipInfo.value;
-                const langs = Object.keys(byLangData.value);
                 const outputZip = new JSZip();
                 let totalMatched = 0, totalMissing = 0, outputFiles = 0;
                 const missingDetail = {};
 
-                genState.total = langs.length;
+                const tickets = Object.keys(results.value);
+                const totalTasks = Object.values(results.value)
+                    .reduce((sum, langs) => sum + Object.keys(langs).length, 0);
+                genState.total = totalTasks;
+
                 log('Starting working files generation...', 'info');
-                log(`  Target languages: ${langs.join(', ')}`, 'info');
+                log(`  Tickets: ${tickets.length}, total (ticket,lang) tasks: ${totalTasks}`, 'info');
 
-                for (let li = 0; li < langs.length; li++) {
-                    const lang = langs[li];
-                    genState.phase = `Processing ${lang} (${li + 1}/${langs.length})...`;
-                    genState.progress = li;
+                // Cache loaded source data per (lang|build) to avoid re-reading large files
+                const cache = {};
+                async function getSourceData(lang, build) {
+                    const key = lang + '|' + build;
+                    if (cache[key] !== undefined) return cache[key];
 
-                    // Find source.json files for this language
-                    let langPaths = info.allPaths.filter(p => {
-                        const segs = p.split('/');
-                        const euIdx = segs.indexOf('en-US');
-                        return euIdx >= 0 && segs[euIdx + 1] === lang;
-                    });
-                    if (langPaths.length === 0) {
-                        langPaths = info.allPaths.filter(p => p.includes('/' + lang + '/'));
+                    const buildInfo = info.langBuildMap[lang]?.[build];
+                    if (!buildInfo) { cache[key] = null; return null; }
+
+                    // Prefer the plain path (no version subfolder); fall back to versioned
+                    let path = buildInfo.plain;
+                    if (!path) {
+                        const versions = Object.keys(buildInfo.versioned);
+                        if (versions.length > 0) path = buildInfo.versioned[versions.sort().pop()];
                     }
+                    if (!path) { cache[key] = null; return null; }
 
-                    if (langPaths.length === 0) {
-                        log(`  [${lang}] No source.json in ZIP — skipped`, 'warn');
-                        const issuesForLang = byLangData.value[lang];
-                        for (const keys of Object.values(issuesForLang)) {
-                            totalMissing += keys.length;
+                    try {
+                        const txt = await sourceZip.value.file(path).async('string');
+                        const data = JSON.parse(txt);
+                        cache[key] = data;
+                        log(`    [load] ${lang}/${build}: ${Object.keys(data).length} keys from ${path}`, 'info');
+                        return data;
+                    } catch (e) {
+                        log(`    [load] Failed ${path}: ${e.message}`, 'error');
+                        cache[key] = null;
+                        return null;
+                    }
+                }
+
+                let processed = 0;
+                for (const ticket of tickets) {
+                    const ticketLangs = results.value[ticket];
+
+                    for (const [lang, keys] of Object.entries(ticketLangs)) {
+                        processed++;
+                        genState.progress = processed;
+                        genState.phase = `Processing ${ticket}/${lang} (${processed}/${totalTasks})...`;
+
+                        const buildsForLang = info.langBuildMap[lang];
+                        if (!buildsForLang || Object.keys(buildsForLang).length === 0) {
+                            log(`  [${ticket}/${lang}] Lang not found in source ZIP — all keys missing`, 'warn');
                             if (!missingDetail[lang]) missingDetail[lang] = [];
                             keys.forEach(k => { if (!missingDetail[lang].includes(k)) missingDetail[lang].push(k); });
+                            totalMissing += keys.length;
+                            continue;
                         }
-                        continue;
-                    }
 
-                    // Read and merge all source data for this language
-                    let sourceData = {};
-                    for (const sp of langPaths) {
-                        try {
-                            const txt = await sourceZip.value.file(sp).async('string');
-                            Object.assign(sourceData, JSON.parse(txt));
-                        } catch (e) {
-                            log(`  [${lang}] Parse error: ${e.message}`, 'error');
-                        }
-                    }
+                        // Track which keys have been matched across all builds for this (ticket, lang)
+                        const matchedKeys = new Set();
+                        const buildNames = Object.keys(buildsForLang);
 
-                    const sourceKeyCount = Object.keys(sourceData).length;
-                    log(`  [${lang}] ${sourceKeyCount} keys in source (${langPaths.length} file(s))`, 'info');
+                        for (const buildName of buildNames) {
+                            const sourceData = await getSourceData(lang, buildName);
+                            if (!sourceData) continue;
 
-                    // For each JIRA ticket with keys for this language
-                    const issuesForLang = byLangData.value[lang];
-                    for (const [ticket, keys] of Object.entries(issuesForLang)) {
-                        const matched = {};
-                        const missing = [];
+                            const matched = {};
+                            for (const key of keys) {
+                                if (Object.prototype.hasOwnProperty.call(sourceData, key)) {
+                                    matched[key] = sourceData[key];
+                                    matchedKeys.add(key);
+                                }
+                            }
 
-                        for (const key of keys) {
-                            if (sourceData.hasOwnProperty(key)) {
-                                matched[key] = sourceData[key];
-                                totalMatched++;
-                            } else {
-                                missing.push(key);
-                                totalMissing++;
+                            if (Object.keys(matched).length > 0) {
+                                const outPath = `${ticket}/${lang}/${buildName}/opus_jsons/source.json`;
+                                outputZip.file(outPath, JSON.stringify(matched, null, 2));
+                                outputFiles++;
+                                log(`  [${ticket}/${lang}/${buildName}] ${Object.keys(matched).length} key(s) extracted`, 'success');
                             }
                         }
 
-                        if (Object.keys(matched).length > 0) {
-                            const outPath = `${lang}/${ticket}/${info.subPath}/source.json`;
-                            outputZip.file(outPath, JSON.stringify(matched, null, 2));
-                            outputFiles++;
-                            log(`  [${lang}/${ticket}] ${Object.keys(matched).length} matched, ${missing.length} missing`,
-                                missing.length > 0 ? 'warn' : 'success');
-                        } else {
-                            log(`  [${lang}/${ticket}] No keys matched in source`, 'warn');
-                        }
+                        totalMatched += matchedKeys.size;
+                        const missing = keys.filter(k => !matchedKeys.has(k));
+                        totalMissing += missing.length;
 
                         if (missing.length > 0) {
                             if (!missingDetail[lang]) missingDetail[lang] = [];
                             missing.forEach(k => { if (!missingDetail[lang].includes(k)) missingDetail[lang].push(k); });
+                            log(`  [${ticket}/${lang}] ${missing.length} key(s) NOT found in any build`, 'warn');
                         }
                     }
                 }
@@ -1098,10 +1173,18 @@ createApp({
                 });
                 const filename = `working-files-${new Date().toISOString().slice(0, 10)}.zip`;
 
+                const allLangs = new Set();
+                for (const t of tickets) Object.keys(results.value[t]).forEach(l => allLangs.add(l));
+
                 genResult.value = {
                     blob, filename,
-                    stats: { langs: langs.length, tickets: Object.keys(results.value).length,
-                             matchedKeys: totalMatched, missingKeys: totalMissing, outputFiles },
+                    stats: {
+                        tickets: tickets.length,
+                        langs: allLangs.size,
+                        matchedKeys: totalMatched,
+                        missingKeys: totalMissing,
+                        outputFiles,
+                    },
                     missingDetail,
                 };
 
