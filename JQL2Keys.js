@@ -67,10 +67,10 @@ const server = http.createServer((req, res) => {
         return res.end();
     }
 
-    // ── Health check ──
+    // ── Health check ── (also identifies our app for self-detection)
     if (reqUrl.pathname === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
+        return res.end(JSON.stringify({ status: 'ok', app: 'JQL2Keys', uptime: process.uptime() }));
     }
 
     // ── Jira Proxy ──
@@ -138,12 +138,51 @@ const server = http.createServer((req, res) => {
 });
 
 // ═══════════════════════════════════════
+//  Browser launcher
+// ═══════════════════════════════════════
+function openInBrowser(url) {
+    const cmd = process.platform === 'win32' ? `start "" "${url}"`
+              : process.platform === 'darwin' ? `open "${url}"`
+              : `xdg-open "${url}"`;
+    exec(cmd, () => {});
+}
+
+// ═══════════════════════════════════════
+//  Detect existing JQL2Keys instance
+// ═══════════════════════════════════════
+//  Probes /health on each candidate port. If a server responds with
+//  app:"JQL2Keys", that port is ours and we can reuse it instead of
+//  starting a duplicate (which would open a second browser tab).
+function probeForOurApp(port) {
+    return new Promise((resolve) => {
+        const req = http.get({ hostname: '127.0.0.1', port, path: '/health', timeout: 400 }, (res) => {
+            let buf = '';
+            res.on('data', (c) => { buf += c; if (buf.length > 1024) req.destroy(); });
+            res.on('end', () => {
+                try { resolve(JSON.parse(buf).app === 'JQL2Keys' ? port : null); }
+                catch { resolve(null); }
+            });
+        });
+        req.on('error', () => resolve(null));
+        req.on('timeout', () => { req.destroy(); resolve(null); });
+    });
+}
+
+async function findExistingInstance(startPort, count) {
+    for (let p = startPort; p < startPort + count; p++) {
+        const found = await probeForOurApp(p);
+        if (found) return found;
+    }
+    return null;
+}
+
+// ═══════════════════════════════════════
 //  Start with auto-retry on port conflict
 // ═══════════════════════════════════════
 function tryListen(port, retries) {
     server.once('error', (err) => {
         if (err.code === 'EADDRINUSE' && retries > 0) {
-            console.log(`  Port ${port} in use, trying ${port + 1}...`);
+            console.log(`  Port ${port} occupied by another app, trying ${port + 1}...`);
             tryListen(port + 1, retries - 1);
         } else {
             console.error(`  Fatal: ${err.message}`);
@@ -156,20 +195,36 @@ function tryListen(port, retries) {
         console.log('');
         console.log('  ╔═══════════════════════════════════════╗');
         console.log('  ║         JQL2Keys is running           ║');
-        console.log(`  ║   ${url}                   ║`);
+        console.log(`  ║   ${url.padEnd(36)}║`);
         console.log('  ╠═══════════════════════════════════════╣');
         console.log('  ║   Browser will open automatically.    ║');
         console.log('  ║   Keep this window open while using.  ║');
         console.log('  ║   Press Ctrl+C to quit.               ║');
         console.log('  ╚═══════════════════════════════════════╝');
         console.log('');
-
-        // Auto-open browser
-        const cmd = process.platform === 'win32' ? `start "" "${url}"`
-                  : process.platform === 'darwin' ? `open "${url}"`
-                  : `xdg-open "${url}"`;
-        exec(cmd, () => {});
+        openInBrowser(url);
     });
 }
 
-tryListen(PORT, 10);
+(async () => {
+    // Single-instance guard: if JQL2Keys is already running, just reopen
+    // the browser to it and exit — don't start a duplicate server.
+    const existing = await findExistingInstance(PORT, 10);
+    if (existing) {
+        const url = `http://localhost:${existing}`;
+        console.log('');
+        console.log('  ╔═══════════════════════════════════════╗');
+        console.log('  ║   JQL2Keys already running            ║');
+        console.log(`  ║   Reusing ${url.padEnd(28)}║`);
+        console.log('  ╠═══════════════════════════════════════╣');
+        console.log('  ║   Switching browser to that tab...    ║');
+        console.log('  ║   This window will close shortly.     ║');
+        console.log('  ╚═══════════════════════════════════════╝');
+        console.log('');
+        openInBrowser(url);
+        // Brief delay so the OS hands the URL off before we exit
+        setTimeout(() => process.exit(0), 800);
+        return;
+    }
+    tryListen(PORT, 10);
+})();
