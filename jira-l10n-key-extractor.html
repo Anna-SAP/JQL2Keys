@@ -126,6 +126,14 @@
                                 placeholder="RingCentral\.\S+"
                                 class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono">
                         </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">
+                                "all languages" expands to
+                                <span class="text-gray-400">(BCP-47, one per line or comma-separated)</span>
+                            </label>
+                            <textarea v-model="config.allLangs" rows="4"
+                                class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono resize-y"></textarea>
+                        </div>
                     </div>
                 </details>
 
@@ -543,6 +551,25 @@ const LANG_NAME_TO_BCP47 = {
 function normLangName(s) { return String(s).toLowerCase().trim().replace(/\s+/g, ' '); }
 function looksLikeBcp47(s) { return /^[a-z]{2,3}-(?:[A-Z]{2,4}|\d{3})$/.test(s); }
 
+// Default expansion when a Bug is flagged "all languages" (title or Language field).
+// Edit in Advanced Settings if the team's target language set changes.
+const DEFAULT_ALL_LANGS = [
+    'de-DE', 'en-GB', 'es-419', 'es-ES', 'fi-FI',
+    'fr-CA', 'fr-FR', 'it-IT', 'ja-JP', 'ko-KR',
+    'nl-NL', 'pt-BR', 'pt-PT', 'zh-CN', 'zh-TW',
+];
+
+// Standalone "all languages / all langs / all locales" mention.
+const ALL_LANGS_RE = /\ball\s+(?:languages|langs|locales)\b/i;
+
+function parseLangList(raw) {
+    if (!raw) return [];
+    return String(raw)
+        .split(/[\s,;]+/)
+        .map(s => s.trim())
+        .filter(s => looksLikeBcp47(s));
+}
+
 createApp({
     setup() {
         // ═══════════════════════════════════════
@@ -557,6 +584,7 @@ createApp({
             useProxy:   localStorage.getItem('jlke_useProxy') !== 'false',
             proxyUrl:   localStorage.getItem('jlke_proxyUrl') || (location.protocol.startsWith('http') ? location.origin : 'http://localhost:3001'),
             keyPattern: localStorage.getItem('jlke_keyPattern') || '',
+            allLangs:   localStorage.getItem('jlke_allLangs') || DEFAULT_ALL_LANGS.join('\n'),
         });
 
         const state = reactive({ loading: false, phase: '', progress: 0, total: 0, error: '' });
@@ -650,6 +678,7 @@ createApp({
             localStorage.setItem('jlke_useProxy', config.useProxy);
             localStorage.setItem('jlke_proxyUrl', config.proxyUrl);
             localStorage.setItem('jlke_keyPattern', config.keyPattern);
+            localStorage.setItem('jlke_allLangs', config.allLangs);
         }
 
         function buildUrl(path) {
@@ -740,6 +769,11 @@ createApp({
                     const titleLangs = extractLangsFromSummary(summary);
                     const fieldLangs = [...extractLangsFromFields(issue.fields)];
                     const detectedLangs = [...new Set([...titleLangs, ...fieldLangs])];
+                    const allLangsSignal = ALL_LANGS_RE.test(summary)
+                        || Object.values(issue.fields || {}).some(v => fieldStringifyHasAllLangs(v));
+                    if (allLangsSignal) {
+                        log(`  [LANG] "all languages" detected → expanded to ${getAllLangsList().length} target langs`, 'success');
+                    }
                     if (detectedLangs.length) {
                         log(`  [LANG] detected: ${detectedLangs.join(', ')}  (title=${titleLangs.length}, field=${fieldLangs.length})`, 'info');
                     } else {
@@ -859,7 +893,31 @@ createApp({
                 }
             }
 
+            // (c) "all languages" sentinel — explode to the configured target list
+            if (ALL_LANGS_RE.test(summary)) {
+                for (const l of getAllLangsList()) langs.add(l);
+            }
+
             return [...langs];
+        }
+
+        function getAllLangsList() {
+            const parsed = parseLangList(config.allLangs);
+            return parsed.length ? parsed : DEFAULT_ALL_LANGS.slice();
+        }
+
+        // Recursively scan any field value for an "all languages" mention
+        function fieldStringifyHasAllLangs(v) {
+            if (v === null || v === undefined) return false;
+            if (typeof v === 'string') return ALL_LANGS_RE.test(v);
+            if (typeof v === 'number' || typeof v === 'boolean') return false;
+            if (Array.isArray(v)) return v.some(fieldStringifyHasAllLangs);
+            if (typeof v === 'object') {
+                for (const k of ['value', 'name', 'displayName']) {
+                    if (typeof v[k] === 'string' && ALL_LANGS_RE.test(v[k])) return true;
+                }
+            }
+            return false;
         }
 
         // Walk every field on a Jira issue looking for language values
@@ -894,6 +952,7 @@ createApp({
                     const norm = normLangName(c);
                     if (LANG_NAME_TO_BCP47[norm])       langs.add(LANG_NAME_TO_BCP47[norm]);
                     else if (looksLikeBcp47(c))         langs.add(c);
+                    else if (ALL_LANGS_RE.test(c))      { for (const l of getAllLangsList()) langs.add(l); }
                 }
             }
             return langs;
