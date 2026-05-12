@@ -4,6 +4,12 @@
   "description": "Extract translation keys from Jira L10N bugs via JQL",
   "main": "JQL2Keys.js",
   "bin": "JQL2Keys.js",
+  "scripts": {
+    "build": "pkg JQL2Keys.js --output dist/JQL2Keys.exe"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  },
   "pkg": {
     "assets": [
       "jira-l10n-key-extractor.html"
