@@ -220,7 +220,7 @@
             </div>
 
             <!-- Toolbar -->
-            <div v-if="hasResults" class="px-4 pt-4 pb-2 flex flex-wrap items-center justify-between gap-2">
+            <div v-if="hasIssues" class="px-4 pt-4 pb-2 flex flex-wrap items-center justify-between gap-2">
                 <div class="flex items-center gap-1">
                     <button @click="viewMode='cards'" :class="viewMode==='cards'?'bg-blue-100 text-blue-700':'bg-gray-100 text-gray-600 hover:bg-gray-200'"
                         class="px-3 py-1 rounded-l-md text-xs font-medium transition">Cards</button>
@@ -229,19 +229,25 @@
                     <button @click="viewMode='byLang'" :class="viewMode==='byLang'?'bg-blue-100 text-blue-700':'bg-gray-100 text-gray-600 hover:bg-gray-200'"
                         class="px-3 py-1 text-xs font-medium transition">By Language</button>
                     <button @click="viewMode='byKey'" :class="viewMode==='byKey'?'bg-blue-100 text-blue-700':'bg-gray-100 text-gray-600 hover:bg-gray-200'"
-                        class="px-3 py-1 rounded-r-md text-xs font-medium transition">By Key</button>
+                        class="px-3 py-1 text-xs font-medium transition">By Key</button>
+                    <button @click="viewMode='overview'" :class="viewMode==='overview'?'bg-blue-100 text-blue-700':'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                        class="px-3 py-1 rounded-r-md text-xs font-medium transition">Bug Overview</button>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button v-if="viewMode==='cards'" @click="expandAll" class="text-xs text-blue-600 hover:text-blue-800 hover:underline">Expand All</button>
-                    <button v-if="viewMode==='cards'" @click="collapseAll" class="text-xs text-blue-600 hover:text-blue-800 hover:underline">Collapse All</button>
-                    <button @click="copyJSON" class="flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200 transition">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-                        {{copyLabel}}
-                    </button>
-                    <button @click="downloadJSON" class="flex items-center gap-1 px-2.5 py-1 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 transition">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                        Export JSON
-                    </button>
+                    <button v-if="viewMode==='cards' && hasResults" @click="expandAll" class="text-xs text-blue-600 hover:text-blue-800 hover:underline">Expand All</button>
+                    <button v-if="viewMode==='cards' && hasResults" @click="collapseAll" class="text-xs text-blue-600 hover:text-blue-800 hover:underline">Collapse All</button>
+                    <template v-if="viewMode!=='overview'">
+                        <button @click="copyJSON" :disabled="!hasResults"
+                            class="flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                            {{copyLabel}}
+                        </button>
+                        <button @click="downloadJSON" :disabled="!hasResults"
+                            class="flex items-center gap-1 px-2.5 py-1 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                            Export JSON
+                        </button>
+                    </template>
                 </div>
             </div>
 
@@ -349,6 +355,236 @@
                         </div>
                     </div>
                     <div v-if="byKeyVisible.length===0" class="text-center text-xs text-gray-400 py-6">No keys match the current filter.</div>
+                </div>
+
+                <!-- ═══ BUG OVERVIEW VIEW ═══ -->
+                <div v-if="viewMode==='overview' && hasIssues" class="mt-2 space-y-3">
+                    <!-- Statistics Dashboard -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <!-- Source Files card -->
+                        <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4 flex flex-col">
+                            <div class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Source Files</div>
+                            <div class="flex items-baseline gap-2">
+                                <div class="text-3xl font-bold text-blue-600 tabular-nums">{{bugOverviewStats.uniqueSourceFiles}}</div>
+                                <div class="text-xs text-gray-400">unique</div>
+                            </div>
+                            <div class="text-xs text-gray-500 mt-auto pt-2">
+                                across {{bugOverviewStats.total}} bug{{bugOverviewStats.total === 1 ? '' : 's'}}<span v-if="hasBugOverviewActiveFilters"> (filtered)</span>
+                            </div>
+                        </div>
+
+                        <!-- Category distribution card -->
+                        <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                                    Category <span class="text-gray-400 normal-case">({{bugOverviewStats.catDist.length}} kinds)</span>
+                                </div>
+                                <button v-if="bugOverviewFilters.category.length"
+                                    @click="bugOverviewFilters.category.splice(0)"
+                                    class="text-[10px] text-blue-500 hover:text-blue-700 hover:underline">clear</button>
+                            </div>
+                            <div v-if="bugOverviewStats.catDist.length === 0" class="text-xs text-gray-400 italic">No data</div>
+                            <div v-else class="space-y-1.5">
+                                <button type="button"
+                                    v-for="d in bugOverviewStats.catDist" :key="d.name"
+                                    @click="toggleBugOverviewCategory(d.name)"
+                                    :class="bugOverviewFilters.category.includes(d.name) ? 'bg-blue-50 ring-1 ring-blue-300' : 'hover:bg-gray-50'"
+                                    class="w-full text-left rounded px-2 py-1 transition">
+                                    <div class="flex justify-between items-baseline text-xs gap-2">
+                                        <span :class="bugOverviewFilters.category.includes(d.name) ? 'font-semibold text-blue-700' : 'text-gray-700'"
+                                            class="truncate">{{d.name}}</span>
+                                        <span class="text-gray-500 shrink-0 tabular-nums">{{d.count}} <span class="text-gray-400">({{d.pct.toFixed(1)}}%)</span></span>
+                                    </div>
+                                    <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-1">
+                                        <div class="h-full bg-blue-500 transition-all duration-200" :style="{width: d.pct + '%'}"></div>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Severity distribution card -->
+                        <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                                    Severity <span class="text-gray-400 normal-case">({{bugOverviewStats.sevDist.length}} levels)</span>
+                                </div>
+                                <button v-if="bugOverviewFilters.severity.length"
+                                    @click="bugOverviewFilters.severity.splice(0)"
+                                    class="text-[10px] text-blue-500 hover:text-blue-700 hover:underline">clear</button>
+                            </div>
+                            <div v-if="bugOverviewStats.sevDist.length === 0" class="text-xs text-gray-400 italic">No data</div>
+                            <div v-else class="space-y-1.5">
+                                <button type="button"
+                                    v-for="d in bugOverviewStats.sevDist" :key="d.name"
+                                    @click="toggleBugOverviewSeverity(d.name)"
+                                    :class="bugOverviewFilters.severity.includes(d.name) ? 'bg-red-50 ring-1 ring-red-300' : 'hover:bg-gray-50'"
+                                    class="w-full text-left rounded px-2 py-1 transition">
+                                    <div class="flex justify-between items-baseline text-xs gap-2">
+                                        <span :class="bugOverviewFilters.severity.includes(d.name) ? 'font-semibold text-red-700' : 'text-gray-700'"
+                                            class="truncate">{{d.name}}</span>
+                                        <span class="text-gray-500 shrink-0 tabular-nums">{{d.count}} <span class="text-gray-400">({{d.pct.toFixed(1)}}%)</span></span>
+                                    </div>
+                                    <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-1">
+                                        <div class="h-full bg-red-500 transition-all duration-200" :style="{width: d.pct + '%'}"></div>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Summary row -->
+                    <div class="flex flex-wrap items-center gap-2 text-xs">
+                        <span class="text-gray-500">
+                            Showing <span class="font-semibold text-gray-700 tabular-nums">{{bugOverviewVisible.length}}</span> of {{bugOverviewRows.length}} bug{{bugOverviewRows.length === 1 ? '' : 's'}}
+                        </span>
+                        <button v-if="hasBugOverviewActiveFilters"
+                            @click="resetBugOverviewFilters"
+                            class="text-blue-600 hover:text-blue-800 hover:underline">Clear all filters</button>
+                        <span class="flex-1"></span>
+                        <button @click="exportBugOverviewCSV"
+                            class="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 text-white rounded text-xs font-medium hover:bg-emerald-700 transition">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                            Export CSV
+                        </button>
+                    </div>
+
+                    <!-- Table -->
+                    <div class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs">
+                                <thead>
+                                    <!-- Sortable header row -->
+                                    <tr class="bg-gray-50 border-b border-gray-200">
+                                        <th class="px-3 py-2 text-left font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
+                                            @click="setBugOverviewSort('key')">
+                                            <div class="flex items-center gap-1">
+                                                <span>Issue Key</span>
+                                                <span class="text-[10px]" :class="bugOverviewSort.column==='key' ? 'text-blue-600' : 'text-gray-300'">{{bugOverviewSort.column==='key' ? (bugOverviewSort.dir==='asc' ? '▲' : '▼') : '⇅'}}</span>
+                                            </div>
+                                        </th>
+                                        <th class="px-3 py-2 text-left font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
+                                            @click="setBugOverviewSort('sourceFile')">
+                                            <div class="flex items-center gap-1">
+                                                <span>Source File</span>
+                                                <span class="text-[10px]" :class="bugOverviewSort.column==='sourceFile' ? 'text-blue-600' : 'text-gray-300'">{{bugOverviewSort.column==='sourceFile' ? (bugOverviewSort.dir==='asc' ? '▲' : '▼') : '⇅'}}</span>
+                                            </div>
+                                        </th>
+                                        <th class="px-3 py-2 text-left font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
+                                            @click="setBugOverviewSort('category')">
+                                            <div class="flex items-center gap-1">
+                                                <span>Category</span>
+                                                <span class="text-[10px]" :class="bugOverviewSort.column==='category' ? 'text-blue-600' : 'text-gray-300'">{{bugOverviewSort.column==='category' ? (bugOverviewSort.dir==='asc' ? '▲' : '▼') : '⇅'}}</span>
+                                            </div>
+                                        </th>
+                                        <th class="px-3 py-2 text-left font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                                            @click="setBugOverviewSort('sourceText')">
+                                            <div class="flex items-center gap-1">
+                                                <span>Source Text (EN)</span>
+                                                <span class="text-[10px]" :class="bugOverviewSort.column==='sourceText' ? 'text-blue-600' : 'text-gray-300'">{{bugOverviewSort.column==='sourceText' ? (bugOverviewSort.dir==='asc' ? '▲' : '▼') : '⇅'}}</span>
+                                            </div>
+                                        </th>
+                                        <th class="px-3 py-2 text-left font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
+                                            @click="setBugOverviewSort('severity')">
+                                            <div class="flex items-center gap-1">
+                                                <span>Severity</span>
+                                                <span class="text-[10px]" :class="bugOverviewSort.column==='severity' ? 'text-blue-600' : 'text-gray-300'">{{bugOverviewSort.column==='severity' ? (bugOverviewSort.dir==='asc' ? '▲' : '▼') : '⇅'}}</span>
+                                            </div>
+                                        </th>
+                                    </tr>
+                                    <!-- Per-column filter row -->
+                                    <tr class="bg-gray-50/60 border-b border-gray-200">
+                                        <th class="px-2 py-1.5 align-top min-w-[140px]">
+                                            <input v-model="bugOverviewFilters.key" type="text"
+                                                placeholder="LOC-…   (a,b = OR)"
+                                                class="w-full px-1.5 py-0.5 text-[11px] border border-gray-300 rounded font-mono focus:ring-1 focus:ring-blue-500 outline-none">
+                                        </th>
+                                        <th class="px-2 py-1.5 align-top min-w-[140px]">
+                                            <input v-model="bugOverviewFilters.sourceFile" type="text"
+                                                placeholder="Web-…   (a,b = OR)"
+                                                class="w-full px-1.5 py-0.5 text-[11px] border border-gray-300 rounded font-mono focus:ring-1 focus:ring-blue-500 outline-none">
+                                        </th>
+                                        <th class="px-2 py-1.5 align-top min-w-[130px]">
+                                            <details class="relative">
+                                                <summary class="cursor-pointer text-[11px] text-gray-700 px-1.5 py-0.5 border border-gray-300 rounded bg-white hover:bg-gray-50 select-none">
+                                                    {{bugOverviewFilters.category.length === 0 ? 'Any category' : bugOverviewFilters.category.length + ' selected'}}
+                                                </summary>
+                                                <div class="absolute z-10 mt-1 left-0 min-w-[180px] bg-white border border-gray-200 rounded-md shadow-lg py-1 max-h-60 overflow-y-auto">
+                                                    <label v-for="c in bugOverviewCategories" :key="c"
+                                                        class="flex items-center gap-2 px-2 py-1 hover:bg-gray-50 cursor-pointer text-[11px]">
+                                                        <input type="checkbox" :checked="bugOverviewFilters.category.includes(c)"
+                                                            @change="toggleBugOverviewCategory(c)"
+                                                            class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                                        <span>{{c}}</span>
+                                                    </label>
+                                                    <div v-if="bugOverviewCategories.length === 0" class="px-2 py-1 text-[11px] text-gray-400 italic">No values</div>
+                                                </div>
+                                            </details>
+                                        </th>
+                                        <th class="px-2 py-1.5 align-top">
+                                            <input v-model="bugOverviewFilters.sourceText" type="text"
+                                                placeholder="search text…  (a,b = OR)"
+                                                class="w-full px-1.5 py-0.5 text-[11px] border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none">
+                                        </th>
+                                        <th class="px-2 py-1.5 align-top min-w-[120px]">
+                                            <details class="relative">
+                                                <summary class="cursor-pointer text-[11px] text-gray-700 px-1.5 py-0.5 border border-gray-300 rounded bg-white hover:bg-gray-50 select-none">
+                                                    {{bugOverviewFilters.severity.length === 0 ? 'Any severity' : bugOverviewFilters.severity.length + ' selected'}}
+                                                </summary>
+                                                <div class="absolute z-10 mt-1 right-0 min-w-[160px] bg-white border border-gray-200 rounded-md shadow-lg py-1 max-h-60 overflow-y-auto">
+                                                    <label v-for="s in bugOverviewSeverities" :key="s"
+                                                        class="flex items-center gap-2 px-2 py-1 hover:bg-gray-50 cursor-pointer text-[11px]">
+                                                        <input type="checkbox" :checked="bugOverviewFilters.severity.includes(s)"
+                                                            @change="toggleBugOverviewSeverity(s)"
+                                                            class="rounded border-gray-300 text-red-600 focus:ring-red-500">
+                                                        <span>{{s}}</span>
+                                                    </label>
+                                                    <div v-if="bugOverviewSeverities.length === 0" class="px-2 py-1 text-[11px] text-gray-400 italic">No values</div>
+                                                </div>
+                                            </details>
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="r in bugOverviewVisible" :key="r.key" class="border-b border-gray-100 hover:bg-blue-50/40 transition">
+                                        <td class="px-3 py-2 align-top whitespace-nowrap">
+                                            <a :href="jiraIssueUrl(r.key)" target="_blank" rel="noopener"
+                                                class="font-semibold text-blue-600 hover:text-blue-800 hover:underline">{{r.key}}</a>
+                                            <div v-if="r.summary" class="text-[10px] text-gray-500 max-w-[260px] truncate" :title="r.summary">{{r.summary}}</div>
+                                        </td>
+                                        <td class="px-3 py-2 font-mono text-gray-700 align-top whitespace-nowrap">{{r.sourceFile || '—'}}</td>
+                                        <td class="px-3 py-2 align-top whitespace-nowrap">
+                                            <span v-if="r.category" :class="categoryBadgeClass(r.category)"
+                                                class="px-1.5 py-0.5 rounded text-[10px] font-medium">{{r.category}}</span>
+                                            <span v-else class="text-gray-400">—</span>
+                                        </td>
+                                        <td class="px-3 py-2 text-gray-700 align-top max-w-md">
+                                            <div v-if="r.sourceText" class="whitespace-pre-wrap leading-snug break-words">{{bugOverviewExpanded.has(r.key) ? r.sourceText : truncateText(r.sourceText, 200)}}</div>
+                                            <span v-else class="text-gray-400">—</span>
+                                            <button v-if="r.sourceText && r.sourceText.length > 200"
+                                                @click="toggleBugOverviewRow(r.key)"
+                                                class="text-[10px] text-blue-500 hover:text-blue-700 hover:underline mt-0.5">
+                                                {{bugOverviewExpanded.has(r.key) ? 'collapse' : 'expand'}}
+                                            </button>
+                                        </td>
+                                        <td class="px-3 py-2 align-top whitespace-nowrap">
+                                            <span v-if="r.severity" :class="severityBadgeClass(r.severity)"
+                                                class="px-1.5 py-0.5 rounded text-[10px] font-medium">{{r.severity}}</span>
+                                            <span v-else class="text-gray-400">—</span>
+                                        </td>
+                                    </tr>
+                                    <tr v-if="bugOverviewVisible.length === 0">
+                                        <td colspan="5" class="px-3 py-8 text-center text-xs text-gray-400">
+                                            <div v-if="bugOverviewRows.length === 0">No bugs fetched yet.</div>
+                                            <div v-else>
+                                                No bugs match the current filters.
+                                                <button @click="resetBugOverviewFilters" class="text-blue-600 hover:underline ml-1">Clear filters</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- ═══ WORKING FILES GENERATOR ═══ -->
@@ -518,12 +754,20 @@
                 </div>
 
                 <!-- ═══ EMPTY STATE ═══ -->
-                <div v-if="!hasResults && !state.loading" class="flex flex-col items-center justify-center h-full py-20 text-gray-400">
+                <div v-if="!hasIssues && !state.loading" class="flex flex-col items-center justify-center h-full py-20 text-gray-400">
                     <svg class="w-20 h-20 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                     </svg>
                     <p class="text-lg font-medium text-gray-500">No results yet</p>
                     <p class="text-sm mt-1">Configure Jira connection and run a JQL query to extract keys.</p>
+                </div>
+
+                <!-- ═══ NO-KEYS NOTICE (issues fetched but no translation keys, non-overview tab) ═══ -->
+                <div v-if="hasIssues && !hasResults && !state.loading && viewMode!=='overview'"
+                    class="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+                    <div class="font-semibold mb-1">No translation keys extracted</div>
+                    <p class="text-xs text-amber-700">The JQL returned {{Object.keys(issueMeta).length}} bug(s) but none contained recognizable translation keys.
+                        Try the <button @click="viewMode='overview'" class="font-semibold underline hover:text-amber-900">Bug Overview</button> tab to browse the bug list and structured info.</p>
                 </div>
             </div>
         </main>
@@ -641,6 +885,14 @@ createApp({
         const byKeyFilter = ref('');
         const byKeyOnlyShared = ref(false);
 
+        // Bug Overview view
+        const bugOverviewSort = ref({ column: 'key', dir: 'asc' });
+        const bugOverviewFilters = reactive({
+            key: '', sourceFile: '', sourceText: '',
+            category: [], severity: [],
+        });
+        const bugOverviewExpanded = ref(new Set());
+
         // Working Files Generator
         const sourceZip     = ref(null);
         const sourceZipName = ref('');
@@ -654,6 +906,7 @@ createApp({
         //  COMPUTED
         // ═══════════════════════════════════════
         const hasResults = computed(() => Object.keys(results.value).length > 0);
+        const hasIssues  = computed(() => Object.keys(issueMeta.value).length > 0);
 
         const stats = computed(() => {
             const r = results.value;
@@ -737,6 +990,96 @@ createApp({
                 if (q && !e.key.toLowerCase().includes(q)) return false;
                 return true;
             });
+        });
+
+        // ─── Bug Overview ───────────────────────
+        // Comma-separated terms in a single text filter behave as OR within a
+        // column; conditions across columns are AND-ed. The categorical filters
+        // (category, severity) are arrays — an empty array means "no filter".
+        function matchesTextFilter(value, filterText) {
+            if (!filterText) return true;
+            const terms = filterText.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+            if (terms.length === 0) return true;
+            const lc = (value || '').toString().toLowerCase();
+            return terms.some(t => lc.includes(t));
+        }
+
+        const bugOverviewRows = computed(() => {
+            const rows = [];
+            for (const [key, meta] of Object.entries(issueMeta.value)) {
+                const info = meta.bugInfo || {};
+                rows.push({
+                    key,
+                    summary:    meta.summary || '',
+                    sourceFile: info.sourceFile || '',
+                    category:   info.category || '',
+                    sourceText: info.sourceText || '',
+                    severity:   info.severity || '',
+                });
+            }
+            return rows;
+        });
+
+        const bugOverviewCategories = computed(() => {
+            const set = new Set();
+            bugOverviewRows.value.forEach(r => r.category && set.add(r.category));
+            return [...set].sort();
+        });
+
+        const bugOverviewSeverities = computed(() => {
+            const set = new Set();
+            bugOverviewRows.value.forEach(r => r.severity && set.add(r.severity));
+            return [...set].sort();
+        });
+
+        const bugOverviewVisible = computed(() => {
+            const f = bugOverviewFilters;
+            const rows = bugOverviewRows.value.filter(r => {
+                if (!matchesTextFilter(r.key, f.key)) return false;
+                if (!matchesTextFilter(r.sourceFile, f.sourceFile)) return false;
+                if (!matchesTextFilter(r.sourceText, f.sourceText)) return false;
+                if (f.category.length > 0 && !f.category.includes(r.category)) return false;
+                if (f.severity.length > 0 && !f.severity.includes(r.severity)) return false;
+                return true;
+            });
+            const { column, dir } = bugOverviewSort.value;
+            const sign = dir === 'asc' ? 1 : -1;
+            rows.sort((a, b) => {
+                const va = (a[column] || '').toString().toLowerCase();
+                const vb = (b[column] || '').toString().toLowerCase();
+                if (va === vb) return a.key.localeCompare(b.key);
+                return va < vb ? -sign : sign;
+            });
+            return rows;
+        });
+
+        const bugOverviewStats = computed(() => {
+            const rows = bugOverviewVisible.value;
+            const total = rows.length;
+            const fileSet = new Set();
+            const catCounts = {};
+            const sevCounts = {};
+            for (const r of rows) {
+                if (r.sourceFile) fileSet.add(r.sourceFile);
+                const c = r.category || '(uncategorized)';
+                catCounts[c] = (catCounts[c] || 0) + 1;
+                const s = r.severity || '(unspecified)';
+                sevCounts[s] = (sevCounts[s] || 0) + 1;
+            }
+            const toDist = (counts) => Object.entries(counts)
+                .map(([name, count]) => ({ name, count, pct: total ? (count / total * 100) : 0 }))
+                .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+            return {
+                total,
+                uniqueSourceFiles: fileSet.size,
+                catDist: toDist(catCounts),
+                sevDist: toDist(sevCounts),
+            };
+        });
+
+        const hasBugOverviewActiveFilters = computed(() => {
+            const f = bugOverviewFilters;
+            return !!(f.key || f.sourceFile || f.sourceText || f.category.length || f.severity.length);
         });
 
         // ═══════════════════════════════════════
@@ -838,7 +1181,8 @@ createApp({
 
                     issueMeta.value[key] = {
                         summary,
-                        status: issue.fields?.status?.name || ''
+                        status: issue.fields?.status?.name || '',
+                        bugInfo: { sourceFile: '', category: '', severity: '', sourceText: '' },
                     };
 
                     const issueResult = {};
@@ -864,8 +1208,13 @@ createApp({
                     // Parse description
                     const rawDesc = issue.fields?.description;
                     const descText = extractText(rawDesc);
+                    issueMeta.value[key].bugInfo = extractBugInfo(descText, summary);
                     if (descText) {
                         log(`  [DESC] type=${typeof rawDesc}, len=${descText.length}, preview: ${descText.substring(0,150).replace(/\n/g,'\\n')}`, 'info');
+                        const bi = issueMeta.value[key].bugInfo;
+                        if (bi.sourceFile || bi.category || bi.severity) {
+                            log(`  [BUG] cat=${bi.category||'—'}, sev=${bi.severity||'—'}, file=${bi.sourceFile||'—'}`, 'info');
+                        }
                         mergeInto(issueResult, parseContent(descText, detectedLangs));
                     } else {
                         log(`  [DESC] empty or null`, 'warn');
@@ -1139,6 +1488,83 @@ createApp({
         }
 
         // ═══════════════════════════════════════
+        //  BUG OVERVIEW — structured fields parser
+        // ═══════════════════════════════════════
+        // AutoSSR-style Jira bug descriptions carry a fixed set of labelled
+        // sections (Category, Severity, Source File, Source Text (EN), …). This
+        // walker reads the cleaned description line-by-line and groups text
+        // under whichever known label most recently appeared, so multi-line
+        // sections (Source Text) are captured intact.
+        //
+        // The regex tolerates a trailing language code in parentheses
+        // (e.g. "Current Translation (DE):") and either ":" or "?" as the
+        // terminator after the label (so "Why fix this?" is recognized too).
+        const BUG_LABELS = [
+            'Suggested Translation', 'Current Translation',
+            'Why fix this', 'Why fix',
+            'Issue Detail', 'Glossary Source', 'Rule ID', 'Source File',
+            'Source Text', 'Background', 'Category', 'Severity', 'Location',
+        ];
+        const BUG_LABEL_RE = new RegExp(
+            '^\\s*(' + BUG_LABELS.map(l => l.replace(/[.*+?^=!:${}()|\[\]\/\\]/g, '\\$&')).join('|') + ')\\s*(?:\\([^)]*\\))?\\s*(?:\\?\\s*:?|:)\\s*(.*)$',
+            'i'
+        );
+
+        function categoryFromSummary(summary) {
+            if (!summary) return '';
+            // AutoSSR titles encode the category as a bracketed tag, e.g. "[Grammar]"
+            const m = summary.match(/\[(Grammar|Layout|Mistranslation|Terminology|Punctuation|Spelling|Capitalization|Typography|Truncation|UI|String|Translation|Date|Time|Number)\]/i);
+            return m ? m[1] : '';
+        }
+
+        function extractBugInfo(text, summary) {
+            const result = { sourceFile: '', category: '', severity: '', sourceText: '' };
+            if (!text) {
+                result.category = categoryFromSummary(summary);
+                return result;
+            }
+
+            // Strip wiki markup that confuses the label regex
+            const cleaned = text
+                .replace(/\{color[^}]*\}|\{color\}/g, '')
+                .replace(/\{code[^}]*\}|\{noformat\}|\{panel[^}]*\}|\{quote\}/g, '\n')
+                .replace(/\*/g, '');
+
+            const sections = {};
+            let currentKey = null;
+            for (const rawLine of cleaned.split(/\r?\n/)) {
+                const m = rawLine.match(BUG_LABEL_RE);
+                if (m) {
+                    currentKey = m[1].trim().toLowerCase().replace(/\?$/, '');
+                    sections[currentKey] = m[2].trim();
+                } else if (currentKey) {
+                    const t = rawLine.trim();
+                    if (t) {
+                        sections[currentKey] = sections[currentKey]
+                            ? sections[currentKey] + '\n' + t
+                            : t;
+                    } else if (sections[currentKey]) {
+                        sections[currentKey] += '\n';
+                    }
+                }
+            }
+
+            function pick(...keys) {
+                for (const k of keys) {
+                    const v = sections[k.toLowerCase()];
+                    if (v !== undefined && v.trim()) return v.replace(/\n+$/, '').trim();
+                }
+                return '';
+            }
+
+            result.category   = pick('Category') || categoryFromSummary(summary);
+            result.severity   = pick('Severity');
+            result.sourceFile = pick('Source File');
+            result.sourceText = pick('Source Text');
+            return result;
+        }
+
+        // ═══════════════════════════════════════
         //  EXPORT
         // ═══════════════════════════════════════
         function showToast(msg) {
@@ -1196,6 +1622,102 @@ createApp({
         function runTestParse() {
             const out = parseContent(testInput.value);
             testOutput.value = JSON.stringify(out, null, 2);
+        }
+
+        // ═══════════════════════════════════════
+        //  BUG OVERVIEW — UI helpers
+        // ═══════════════════════════════════════
+        function setBugOverviewSort(col) {
+            const cur = bugOverviewSort.value;
+            bugOverviewSort.value = (cur.column === col)
+                ? { column: col, dir: cur.dir === 'asc' ? 'desc' : 'asc' }
+                : { column: col, dir: 'asc' };
+        }
+
+        function toggleBugOverviewCategory(value) {
+            const arr = bugOverviewFilters.category;
+            const idx = arr.indexOf(value);
+            if (idx >= 0) arr.splice(idx, 1); else arr.push(value);
+        }
+        function toggleBugOverviewSeverity(value) {
+            const arr = bugOverviewFilters.severity;
+            const idx = arr.indexOf(value);
+            if (idx >= 0) arr.splice(idx, 1); else arr.push(value);
+        }
+
+        function resetBugOverviewFilters() {
+            bugOverviewFilters.key = '';
+            bugOverviewFilters.sourceFile = '';
+            bugOverviewFilters.sourceText = '';
+            bugOverviewFilters.category.splice(0);
+            bugOverviewFilters.severity.splice(0);
+        }
+
+        function toggleBugOverviewRow(key) {
+            const set = new Set(bugOverviewExpanded.value);
+            if (set.has(key)) set.delete(key); else set.add(key);
+            bugOverviewExpanded.value = set;
+        }
+
+        function truncateText(text, max = 200) {
+            if (!text) return '';
+            return text.length <= max ? text : text.slice(0, max).trim() + '…';
+        }
+
+        function categoryBadgeClass(category) {
+            const map = {
+                'Grammar':        'bg-pink-100 text-pink-700',
+                'Layout':         'bg-blue-100 text-blue-700',
+                'Mistranslation': 'bg-orange-100 text-orange-700',
+                'Terminology':    'bg-teal-100 text-teal-700',
+                'Punctuation':    'bg-purple-100 text-purple-700',
+                'Spelling':       'bg-yellow-100 text-yellow-700',
+                'Capitalization': 'bg-amber-100 text-amber-700',
+                'Typography':     'bg-indigo-100 text-indigo-700',
+                'Truncation':     'bg-rose-100 text-rose-700',
+            };
+            return map[category] || 'bg-gray-100 text-gray-700';
+        }
+        function severityBadgeClass(severity) {
+            const map = {
+                'Blocker':  'bg-red-200 text-red-900',
+                'Critical': 'bg-red-100 text-red-800',
+                'Major':    'bg-orange-100 text-orange-700',
+                'Normal':   'bg-yellow-100 text-yellow-700',
+                'Minor':    'bg-blue-100 text-blue-700',
+                'Trivial':  'bg-gray-100 text-gray-600',
+            };
+            return map[severity] || 'bg-gray-100 text-gray-700';
+        }
+
+        function jiraIssueUrl(key) {
+            if (!config.domain || !key) return '#';
+            const base = config.domain.replace(/\/+$/, '');
+            const root = base.startsWith('http') ? base : 'https://' + base;
+            return `${root}/browse/${key}`;
+        }
+
+        function exportBugOverviewCSV() {
+            const rows = bugOverviewVisible.value;
+            const headers = ['Issue Key', 'Summary', 'Source File', 'Category', 'Severity', 'Source Text (EN)'];
+            const esc = (v) => {
+                const s = v == null ? '' : String(v);
+                return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+            };
+            const lines = [headers.join(',')];
+            for (const r of rows) {
+                lines.push([r.key, r.summary, r.sourceFile, r.category, r.severity, r.sourceText].map(esc).join(','));
+            }
+            // Prepend UTF-8 BOM so Excel opens the file with correct encoding
+            const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `bug-overview-${new Date().toISOString().slice(0, 10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('CSV exported');
+            log(`Exported Bug Overview CSV: ${rows.length} row(s)`, 'success');
         }
 
         // ═══════════════════════════════════════
@@ -1510,8 +2032,14 @@ createApp({
             config, state, results, issueMeta, logs, expanded, showToken, sidebarOpen,
             viewMode, toast, copyLabel, logPanel, testInput, testOutput,
             sourceZipName, sourceZipInfo, dragOver, zipInput, genState, genResult,
-            hasResults, stats, resultJSON, byLangData, byLangAllKeys, byLangStats,
+            hasResults, hasIssues, stats, resultJSON, byLangData, byLangAllKeys, byLangStats,
             byKeyFilter, byKeyOnlyShared, byKeyEntries, byKeyVisible,
+            bugOverviewSort, bugOverviewFilters, bugOverviewExpanded,
+            bugOverviewRows, bugOverviewVisible, bugOverviewStats,
+            bugOverviewCategories, bugOverviewSeverities, hasBugOverviewActiveFilters,
+            setBugOverviewSort, toggleBugOverviewCategory, toggleBugOverviewSeverity,
+            resetBugOverviewFilters, toggleBugOverviewRow, truncateText,
+            categoryBadgeClass, severityBadgeClass, jiraIssueUrl, exportBugOverviewCSV,
             fetchAllIssues, copyJSON, copyText, copyLogs, downloadJSON,
             toggleIssue, expandAll, collapseAll, runTestParse, log,
             langInResults, formatFileSize, openZipPicker,
