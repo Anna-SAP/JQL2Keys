@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jira L10N Key Extractor</title>
+    <title>UNS Assistant — Localization toolkit</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -19,25 +19,49 @@
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     .log-panel::-webkit-scrollbar-thumb { background: #475569; }
+    /* Tool sidebar tweaks */
+    .tool-nav-btn { transition: all .15s ease; }
+    .tool-nav-btn:not(:disabled):hover { background: #f8fafc; }
+    .tool-nav-btn.active { background: #eef2ff; }
+    .tool-nav-btn.active .tool-nav-title { color: #4338ca; }
+    .tool-nav-btn.active::before {
+        content: ''; position: absolute; left: 0; top: 8px; bottom: 8px;
+        width: 3px; background: #6366f1; border-radius: 0 3px 3px 0;
+    }
+    /* Matrix table */
+    .uns-matrix th, .uns-matrix td { border: 1px solid #f1f5f9; }
+    .uns-matrix tbody tr:hover { background: #fafafa; }
+    .uns-matrix th.brand-col { writing-mode: horizontal-tb; }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen text-gray-800">
 <div id="app" v-cloak>
 
     <!-- ═══ HEADER ═══ -->
-    <header class="bg-gradient-to-r from-blue-700 to-indigo-800 text-white px-6 py-3 shadow-lg flex items-center justify-between">
+    <header :class="['text-white px-6 py-3 shadow-lg flex items-center justify-between bg-gradient-to-r transition-colors duration-300', headerBranding.gradient]">
         <div class="flex items-center gap-3">
-            <div class="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center font-bold text-sm">L10N</div>
+            <div class="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center font-bold text-xs tracking-tight">{{headerBranding.iconLabel}}</div>
             <div>
-                <h1 class="text-lg font-semibold leading-tight">Jira L10N Key Extractor</h1>
-                <p class="text-blue-200 text-xs">Extract translation keys from Jira bugs</p>
+                <h1 class="text-lg font-semibold leading-tight flex items-center gap-2">
+                    {{headerBranding.title}}
+                    <span :class="['text-[10px] bg-white/15 px-1.5 py-0.5 rounded font-normal tracking-wide', headerBranding.tagClass]">{{headerBranding.tag}}</span>
+                </h1>
+                <p :class="['text-xs', headerBranding.subtitleClass]">{{headerBranding.subtitle}}</p>
             </div>
         </div>
         <div class="flex items-center gap-3">
-            <span v-if="stats.keyCount" class="text-xs bg-white/20 px-2 py-1 rounded">
+            <span v-if="(activeTool==='jira-keys' || activeTool==='working-files') && stats.keyCount" class="text-xs bg-white/20 px-2 py-1 rounded">
                 {{stats.issueCount}} issues &middot; {{stats.langCount}} langs &middot; {{stats.keyCount}} keys
             </span>
-            <button @click="sidebarOpen = !sidebarOpen"
+            <span v-if="activeTool==='key-metadata' && unsStats.total" class="text-xs bg-white/20 px-2 py-1 rounded">
+                {{unsStats.total}} keys &middot; {{unsStats.tids}} TIDs &middot; {{unsStats.brands}} brands
+            </span>
+            <a v-if="config.domain" :href="jiraDomainUrl()" target="_blank" rel="noopener"
+                :class="['hidden md:inline-flex items-center gap-1 text-[11px] hover:text-white hover:underline', headerBranding.tagClass]">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                {{jiraDomainHost()}}
+            </a>
+            <button @click="toolSidebarOpen = !toolSidebarOpen"
                 class="lg:hidden p-1.5 rounded hover:bg-white/20 transition">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
             </button>
@@ -47,9 +71,101 @@
     <!-- ═══ MAIN LAYOUT ═══ -->
     <div class="flex min-h-[calc(100vh-56px)]">
 
+        <!-- ─── TOOL NAV SIDEBAR (outer) ─── -->
+        <aside :class="toolSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
+            class="fixed lg:static inset-y-14 left-0 z-40 w-60 bg-white border-r border-gray-200 flex flex-col transition-transform lg:transition-none">
+            <!-- Connection status -->
+            <div class="px-4 py-3 border-b border-gray-100">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-[10px] tracking-tight">UNS</div>
+                    <div class="min-w-0 flex-1">
+                        <div class="text-xs font-medium text-gray-700 truncate">{{appHostLabel}}</div>
+                        <div class="text-[10px] text-gray-400">connected · v{{appVersion}}</div>
+                    </div>
+                    <span class="w-2 h-2 bg-emerald-500 rounded-full shrink-0" title="Connected"></span>
+                </div>
+            </div>
+
+            <!-- EXISTING section -->
+            <div class="px-3 py-3">
+                <div class="px-2 text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-2">Existing</div>
+                <button @click="selectTool('jira-keys')"
+                    :class="['tool-nav-btn relative w-full text-left rounded-md flex items-start gap-2 px-3 py-2',
+                            activeTool==='jira-keys' ? 'active' : '']">
+                    <svg class="w-4 h-4 mt-0.5 shrink-0" :class="activeTool==='jira-keys' ? 'text-indigo-600' : 'text-gray-500'"
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+                    <div class="min-w-0 flex-1">
+                        <div class="text-sm font-medium text-gray-800 tool-nav-title">Jira → Keys</div>
+                        <div class="text-[10px] text-gray-500 truncate">JQL extraction → translation keys</div>
+                    </div>
+                </button>
+                <button @click="selectTool('working-files')"
+                    :class="['tool-nav-btn relative w-full text-left rounded-md flex items-start gap-2 px-3 py-2 mt-0.5',
+                            activeTool==='working-files' ? 'active' : '']">
+                    <svg class="w-4 h-4 mt-0.5 shrink-0" :class="activeTool==='working-files' ? 'text-indigo-600' : 'text-gray-500'"
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                    <div class="min-w-0 flex-1">
+                        <div class="text-sm font-medium text-gray-800 tool-nav-title">Working Files Package</div>
+                        <div class="text-[10px] text-gray-500 truncate">Build XTM/OPUS source ZIP</div>
+                    </div>
+                </button>
+            </div>
+
+            <!-- UNS TOOLKIT section -->
+            <div class="px-3 py-3 border-t border-gray-100">
+                <div class="px-2 text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-2">UNS Toolkit</div>
+                <button @click="selectTool('key-metadata')"
+                    :class="['tool-nav-btn relative w-full text-left rounded-md flex items-start gap-2 px-3 py-2',
+                            activeTool==='key-metadata' ? 'active' : '']">
+                    <svg class="w-4 h-4 mt-0.5 shrink-0" :class="activeTool==='key-metadata' ? 'text-indigo-600' : 'text-gray-500'"
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h8m-8 6h16M16 12l4 4m0-4l-4 4"/></svg>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="text-sm font-medium text-gray-800 tool-nav-title">Key Metadata Extractor</span>
+                            <span class="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold tracking-wider">NEW</span>
+                        </div>
+                        <div class="text-[10px] text-gray-500 truncate">Pull TID / Brand / Content kind</div>
+                    </div>
+                </button>
+                <button disabled
+                    class="relative w-full text-left rounded-md flex items-start gap-2 px-3 py-2 mt-0.5 opacity-60 cursor-not-allowed">
+                    <svg class="w-4 h-4 mt-0.5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="text-sm font-medium text-gray-600">Brand Coverage Audit</span>
+                            <span class="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-bold tracking-wider">SOON</span>
+                        </div>
+                        <div class="text-[10px] text-gray-400 truncate">Which brands miss which templates</div>
+                    </div>
+                </button>
+                <button disabled
+                    class="relative w-full text-left rounded-md flex items-start gap-2 px-3 py-2 mt-0.5 opacity-60 cursor-not-allowed">
+                    <svg class="w-4 h-4 mt-0.5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="text-sm font-medium text-gray-600">Template I18n Diff</span>
+                            <span class="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-bold tracking-wider">SOON</span>
+                        </div>
+                        <div class="text-[10px] text-gray-400 truncate">Compare hbs across builds / langs</div>
+                    </div>
+                </button>
+            </div>
+
+            <!-- Sidebar footer -->
+            <div class="mt-auto px-4 py-2 border-t border-gray-100 text-[10px] text-gray-400">
+                <span>JQL2Keys · UNS Assistant</span>
+            </div>
+        </aside>
+
+        <!-- Tool-nav overlay (mobile) -->
+        <div v-if="toolSidebarOpen" @click="toolSidebarOpen=false"
+            class="fixed inset-0 bg-black/30 z-30 lg:hidden"></div>
+
+        <!-- ─── JIRA TOOL VIEW (existing aside + main) ─── -->
+        <template v-if="activeTool === 'jira-keys' || activeTool === 'working-files'">
         <!-- ─── SIDEBAR ─── -->
         <aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
-            class="fixed lg:static inset-y-14 left-0 z-30 w-80 bg-white border-r border-gray-200 flex flex-col transition-transform lg:transition-none overflow-y-auto">
+            class="fixed lg:static inset-y-14 left-60 z-30 w-80 bg-white border-r border-gray-200 flex flex-col transition-transform lg:transition-none overflow-y-auto">
 
             <!-- Config Form -->
             <form @submit.prevent="fetchAllIssues" class="p-4 space-y-3 border-b border-gray-100">
@@ -588,7 +704,7 @@
                 </div>
 
                 <!-- ═══ WORKING FILES GENERATOR ═══ -->
-                <div class="mt-6 bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                <div id="working-files-section" ref="workingFilesEl" class="mt-6 bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
                     <div class="px-5 py-3 bg-gradient-to-r from-emerald-50 to-teal-50 border-b border-emerald-100">
                         <div class="flex items-center gap-2">
                             <div class="w-6 h-6 bg-emerald-600 rounded flex items-center justify-center">
@@ -771,6 +887,444 @@
                 </div>
             </div>
         </main>
+        </template>
+
+        <!-- ═══════════════════════════════════════ -->
+        <!-- ─── KEY METADATA EXTRACTOR TOOL VIEW ─── -->
+        <!-- ═══════════════════════════════════════ -->
+        <template v-if="activeTool === 'key-metadata'">
+        <main class="flex-1 flex flex-col overflow-y-auto bg-gray-50">
+            <!-- Tool header -->
+            <div class="px-6 py-5 bg-white border-b border-gray-200 flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0">
+                    <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2 flex-wrap">
+                        Key Metadata Extractor
+                        <span class="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold tracking-wider">NEW</span>
+                    </h2>
+                    <p class="text-xs text-gray-500 mt-1 max-w-3xl">
+                        Paste a batch of UNS keys. The tool pulls out unique
+                        <span class="text-indigo-700 font-semibold">Template IDs (TID)</span>,
+                        <span class="text-indigo-700 font-semibold">Brand IDs</span>, and what each key targets —
+                        <span class="text-indigo-700 font-semibold">email html</span> body vs
+                        <span class="text-amber-600 font-semibold">email subject</span> — and gives you four cross-cuts
+                        to spot coverage gaps at a glance.
+                    </p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    <button @click="unsShowBrandDict = !unsShowBrandDict"
+                        class="flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200 transition">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+                        Brand dictionary ({{unsBrandDictEntries.length}})
+                    </button>
+                    <button @click="exportUnsJson" :disabled="!unsStats.total"
+                        class="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded text-xs font-medium hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                        Export JSON
+                    </button>
+                </div>
+            </div>
+
+            <!-- Brand dictionary panel (collapsible, CRUD) -->
+            <div v-if="unsShowBrandDict" class="px-6 py-4 bg-indigo-50 border-b border-indigo-100">
+                <div class="flex items-start justify-between flex-wrap gap-2 mb-3">
+                    <div>
+                        <div class="text-[11px] font-semibold text-indigo-700 uppercase tracking-wider">Brand dictionary</div>
+                        <div class="text-[11px] text-indigo-600/70 mt-0.5">
+                            Brand IDs ↔ readable names. Curate to match your environment — saved to this browser.
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                        <button @click="importUnmappedBrands" type="button"
+                            :disabled="unsUnmappedBrands.length === 0"
+                            class="text-[11px] px-2 py-1 bg-white text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white">
+                            + Add unmapped ({{unsUnmappedBrands.length}})
+                        </button>
+                        <button @click="exportBrandDict" type="button"
+                            :disabled="unsBrandDictEntries.length === 0"
+                            class="text-[11px] px-2 py-1 bg-white text-gray-700 border border-gray-200 rounded hover:bg-gray-100 transition disabled:opacity-40 disabled:cursor-not-allowed">
+                            Export
+                        </button>
+                        <button @click="openBrandImport" type="button"
+                            class="text-[11px] px-2 py-1 bg-white text-gray-700 border border-gray-200 rounded hover:bg-gray-100 transition">
+                            Import
+                        </button>
+                        <input ref="unsBrandImportInput" type="file" accept=".json,application/json" class="hidden"
+                            @change="handleBrandImport($event)">
+                        <button @click="resetBrandDict" type="button"
+                            class="text-[11px] px-2 py-1 bg-white text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-50 transition"
+                            title="Replace with the built-in defaults from the Brand/Product matrix Confluence page">
+                            Reset to defaults
+                        </button>
+                        <button @click="clearBrandDict" type="button"
+                            :disabled="unsBrandDictEntries.length === 0"
+                            class="text-[11px] px-2 py-1 bg-white text-red-600 border border-red-200 rounded hover:bg-red-50 transition disabled:opacity-40 disabled:cursor-not-allowed">
+                            Clear all
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Error banner -->
+                <div v-if="unsBrandError" class="mb-2 px-2 py-1 bg-red-50 border border-red-200 rounded text-[11px] text-red-700 flex items-start gap-2">
+                    <svg class="w-3.5 h-3.5 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+                    <span class="flex-1">{{unsBrandError}}</span>
+                    <button @click="unsBrandError=''" class="text-red-400 hover:text-red-600 shrink-0">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+
+                <!-- Add new entry -->
+                <div class="flex items-center gap-1.5 mb-2 flex-wrap">
+                    <input v-model="unsNewBrandId" type="text" inputmode="numeric" pattern="\d+"
+                        placeholder="Brand ID (digits)"
+                        @keydown.enter.prevent="addBrandEntry"
+                        class="w-32 px-2 py-1 text-[11px] border border-gray-300 rounded font-mono focus:ring-1 focus:ring-indigo-500 outline-none">
+                    <input v-model="unsNewBrandName" type="text"
+                        placeholder="Brand name (e.g. RC, AT&amp;T, Vodafone)"
+                        @keydown.enter.prevent="addBrandEntry"
+                        class="flex-1 min-w-[180px] px-2 py-1 text-[11px] border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 outline-none">
+                    <button @click="addBrandEntry" type="button"
+                        class="px-3 py-1 bg-indigo-600 text-white rounded text-[11px] font-medium hover:bg-indigo-700 transition">
+                        Add
+                    </button>
+                </div>
+
+                <!-- Entry list -->
+                <div v-if="unsBrandDictEntries.length === 0" class="text-[11px] text-indigo-600/70 italic bg-white/60 border border-indigo-100 rounded px-3 py-2">
+                    Dictionary is empty. Add brand mappings above, or click
+                    <button @click="importUnmappedBrands" type="button" :disabled="unsUnmappedBrands.length === 0"
+                        class="underline hover:text-indigo-800 disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed">
+                        "+ Add unmapped"
+                    </button>
+                    to seed rows from your pasted keys.
+                </div>
+                <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-1.5">
+                    <div v-for="[id, name] in unsBrandDictEntries" :key="id"
+                        class="group flex items-center gap-1 bg-white border border-indigo-200 rounded px-2 py-1">
+                        <span class="font-mono font-semibold text-indigo-700 text-[11px] w-12 shrink-0">{{id}}</span>
+                        <span class="text-gray-300 text-[11px]">·</span>
+                        <input :value="name"
+                            @change="updateBrandEntry(id, $event.target.value)"
+                            placeholder="(no name)"
+                            class="flex-1 min-w-0 bg-transparent text-[11px] text-gray-800 outline-none focus:bg-indigo-50 focus:ring-1 focus:ring-indigo-300 rounded px-1 py-0.5">
+                        <button @click="deleteBrandEntry(id)" type="button"
+                            class="text-gray-300 hover:text-red-500 transition opacity-0 group-hover:opacity-100 shrink-0"
+                            :title="`Delete ${id}`">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Unmapped hint -->
+                <div v-if="unsUnmappedBrands.length > 0" class="mt-3 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                    <span class="font-semibold">{{unsUnmappedBrands.length}} brand ID{{unsUnmappedBrands.length === 1 ? '' : 's'}} in your keys without names:</span>
+                    <span class="font-mono">{{unsUnmappedBrands.join(', ')}}</span>
+                </div>
+            </div>
+
+            <div class="px-6 py-5 space-y-4">
+                <!-- Input card -->
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                    <div class="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+                        <div class="flex items-center gap-2">
+                            <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2m0 0a2 2 0 012-2h2a2 2 0 012 2M8 4h8m-8 6h.01M12 10h4m-8 4h.01M12 14h4m-8 4h.01M12 18h4"/></svg>
+                            <div>
+                                <div class="text-sm font-semibold text-gray-800">Paste UNS keys</div>
+                                <div class="text-[11px] text-gray-500">
+                                    One key per line — matches
+                                    <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">RingCentral.uns.&lt;hash&gt;.&lt;TID&gt;__&lt;kind&gt;__&lt;BrandID&gt;__&lt;locale&gt;</code>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <button @click="loadUnsSample" type="button"
+                                class="text-[11px] text-indigo-600 hover:text-indigo-800 hover:underline">Load sample</button>
+                            <button @click="unsKeysInput = ''" type="button" :disabled="!unsKeysInput"
+                                class="text-[11px] text-gray-500 hover:text-gray-700 hover:underline disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline">Clear</button>
+                        </div>
+                    </div>
+                    <div class="p-4">
+                        <textarea v-model="unsKeysInput" rows="10" spellcheck="false"
+                            placeholder="RingCentral.uns.1b165ed92251502e268e4a4708e6a6a0.vodafoneAddInventoryAdminInfo__email_html__7010__en_US&#10;RingCentral.uns.01b5dd78db597a72c2aa49fa7b762d08.creditCardExpiration__email_html__1210__en_US&#10;..."
+                            class="w-full px-3 py-2 text-xs border border-gray-300 rounded-md font-mono leading-relaxed resize-y outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"></textarea>
+                        <div class="mt-2 flex items-center justify-between flex-wrap gap-2">
+                            <div class="text-[11px] text-gray-500">
+                                <template v-if="unsParsed.parsed.length">
+                                    <span class="font-semibold text-gray-700">{{unsParsed.parsed.length}}</span>
+                                    key{{unsParsed.parsed.length === 1 ? '' : 's'}} recognized
+                                    <span v-if="unsParsed.unparsed.length" class="text-amber-600 ml-1">
+                                        · {{unsParsed.unparsed.length}} line{{unsParsed.unparsed.length === 1 ? '' : 's'}} unparsed
+                                    </span>
+                                    <span class="text-gray-400 ml-1">· auto-parsing as you type</span>
+                                </template>
+                                <template v-else-if="unsKeysInput.trim()">
+                                    <span class="text-amber-600">No keys recognized — check format</span>
+                                </template>
+                                <template v-else>
+                                    <span class="text-gray-400">Paste keys above to begin</span>
+                                </template>
+                            </div>
+                            <details v-if="unsParsed.unparsed.length" class="text-[11px]">
+                                <summary class="cursor-pointer text-amber-600 hover:text-amber-700">View unparsed</summary>
+                                <div class="mt-1 bg-amber-50 border border-amber-200 rounded p-2 font-mono text-[10px] max-h-32 overflow-y-auto">
+                                    <div v-for="(l, i) in unsParsed.unparsed.slice(0, 50)" :key="i" class="break-all text-amber-800">{{l}}</div>
+                                    <div v-if="unsParsed.unparsed.length > 50" class="text-amber-500 italic mt-1">…and {{unsParsed.unparsed.length - 50}} more</div>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Empty state -->
+                <div v-if="!unsStats.total" class="bg-white border border-gray-200 rounded-lg p-10 text-center text-gray-400">
+                    <svg class="w-14 h-14 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-7 9h.01M14 14h2m-6 4h.01M14 18h2"/></svg>
+                    <p class="text-sm text-gray-500 font-medium">Paste some UNS keys to extract metadata</p>
+                    <p class="text-xs mt-1">Stats and the matrix view will appear here once keys are recognized.</p>
+                </div>
+
+                <!-- Stats grid -->
+                <div v-if="unsStats.total" class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+                        <div class="flex items-center justify-between mb-1">
+                            <div class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Total keys</div>
+                            <svg class="w-3.5 h-3.5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+                        </div>
+                        <div class="text-3xl font-bold text-gray-800 tabular-nums">{{unsStats.total}}</div>
+                        <div class="text-[10px] text-gray-400 mt-0.5">unique TID·kind·brand</div>
+                    </div>
+                    <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+                        <div class="flex items-center justify-between mb-1">
+                            <div class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Templates</div>
+                            <svg class="w-3.5 h-3.5 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/></svg>
+                        </div>
+                        <div class="text-3xl font-bold text-indigo-600 tabular-nums">{{unsStats.tids}}</div>
+                        <div class="text-[10px] text-gray-400 mt-0.5">unique TIDs</div>
+                    </div>
+                    <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+                        <div class="flex items-center justify-between mb-1">
+                            <div class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Brands</div>
+                            <svg class="w-3.5 h-3.5 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+                        </div>
+                        <div class="text-3xl font-bold text-indigo-600 tabular-nums">{{unsStats.brands}}</div>
+                        <div class="text-[10px] text-gray-400 mt-0.5">
+                            <span v-if="unsStats.unknownBrands === 0">all mapped</span>
+                            <span v-else class="text-amber-600">{{unsStats.unknownBrands}} unmapped</span>
+                        </div>
+                    </div>
+                    <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+                        <div class="flex items-center justify-between mb-1">
+                            <div class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Email HTML</div>
+                            <svg class="w-3.5 h-3.5 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                        </div>
+                        <div class="text-3xl font-bold text-indigo-600 tabular-nums">{{unsStats.html}}</div>
+                        <div class="text-[10px] text-gray-400 mt-0.5">body content</div>
+                    </div>
+                    <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+                        <div class="flex items-center justify-between mb-1">
+                            <div class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Email subject</div>
+                            <svg class="w-3.5 h-3.5 text-amber-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                        </div>
+                        <div class="text-3xl font-bold text-amber-600 tabular-nums">{{unsStats.subject}}</div>
+                        <div class="text-[10px] text-gray-400 mt-0.5">subject line</div>
+                    </div>
+                </div>
+
+                <!-- View toolbar -->
+                <div v-if="unsStats.total" class="flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex items-center gap-1 bg-gray-100 rounded-md p-0.5">
+                        <button @click="unsView='byTemplate'"
+                            :class="unsView==='byTemplate'?'bg-white shadow-sm text-indigo-700':'text-gray-600 hover:text-gray-800'"
+                            class="px-3 py-1 rounded text-xs font-medium transition flex items-center gap-1">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/></svg>
+                            By Template
+                        </button>
+                        <button @click="unsView='byBrand'"
+                            :class="unsView==='byBrand'?'bg-white shadow-sm text-indigo-700':'text-gray-600 hover:text-gray-800'"
+                            class="px-3 py-1 rounded text-xs font-medium transition flex items-center gap-1">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+                            By Brand
+                        </button>
+                        <button @click="unsView='matrix'"
+                            :class="unsView==='matrix'?'bg-white shadow-sm text-indigo-700':'text-gray-600 hover:text-gray-800'"
+                            class="px-3 py-1 rounded text-xs font-medium transition flex items-center gap-1">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                            Matrix
+                        </button>
+                        <button @click="unsView='raw'"
+                            :class="unsView==='raw'?'bg-white shadow-sm text-indigo-700':'text-gray-600 hover:text-gray-800'"
+                            class="px-3 py-1 rounded text-xs font-medium transition flex items-center gap-1">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                            Raw
+                        </button>
+                    </div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <div class="flex items-center gap-0.5 bg-gray-100 rounded p-0.5">
+                            <button @click="unsKindFilter='all'"
+                                :class="unsKindFilter==='all'?'bg-white shadow-sm text-gray-800':'text-gray-500 hover:text-gray-700'"
+                                class="px-2.5 py-0.5 rounded text-[11px] font-medium transition">All</button>
+                            <button @click="unsKindFilter='html'"
+                                :class="unsKindFilter==='html'?'bg-white shadow-sm text-indigo-700':'text-gray-500 hover:text-gray-700'"
+                                class="px-2.5 py-0.5 rounded text-[11px] font-medium transition">HTML</button>
+                            <button @click="unsKindFilter='subject'"
+                                :class="unsKindFilter==='subject'?'bg-white shadow-sm text-amber-700':'text-gray-500 hover:text-gray-700'"
+                                class="px-2.5 py-0.5 rounded text-[11px] font-medium transition">Subject</button>
+                        </div>
+                        <div class="relative">
+                            <svg class="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                            <input v-model="unsSearch" type="text" placeholder="filter TID, brand, name…"
+                                class="pl-7 pr-3 py-1 text-[11px] border border-gray-300 rounded font-mono w-56 focus:ring-1 focus:ring-indigo-500 outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ─── MATRIX VIEW ─── -->
+                <div v-if="unsStats.total && unsView==='matrix'" class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                    <div class="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+                        <div class="flex items-center gap-2">
+                            <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                            <span class="text-sm font-semibold text-gray-700">Template × Brand matrix</span>
+                        </div>
+                        <div class="flex items-center gap-2 text-[10px]">
+                            <span class="inline-flex items-center gap-1">
+                                <span class="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded font-mono font-bold">HTML</span>
+                                <span class="text-gray-500">html</span>
+                            </span>
+                            <span class="inline-flex items-center gap-1">
+                                <span class="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-mono font-bold">SUBJ</span>
+                                <span class="text-gray-500">subject</span>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="uns-matrix w-full text-xs border-collapse">
+                            <thead>
+                                <tr class="bg-gray-50">
+                                    <th class="px-3 py-2 text-left font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10 min-w-[200px]">Template ID</th>
+                                    <th v-for="b in unsMatrix.brands" :key="b" class="px-2 py-2 text-center font-semibold whitespace-nowrap min-w-[60px]">
+                                        <div class="text-gray-700 font-mono">{{b}}</div>
+                                        <div class="text-[9px] font-normal text-gray-400">{{unsBrandName(b) || '—'}}</div>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="tid in unsMatrixFiltered.tids" :key="tid">
+                                    <td class="px-3 py-1.5 font-mono text-[11px] text-gray-700 sticky left-0 bg-white z-10 align-middle">
+                                        <span :class="tid === unsSearch.trim() ? 'bg-yellow-100 px-1 rounded' : ''">{{tid}}</span>
+                                    </td>
+                                    <td v-for="b in unsMatrix.brands" :key="b" class="px-2 py-1.5 text-center align-middle">
+                                        <div class="flex items-center justify-center gap-0.5">
+                                            <span v-if="unsMatrix.data[tid] && unsMatrix.data[tid][b] && unsMatrix.data[tid][b].html"
+                                                class="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[9px] font-mono font-bold">HTML</span>
+                                            <span v-if="unsMatrix.data[tid] && unsMatrix.data[tid][b] && unsMatrix.data[tid][b].subject"
+                                                class="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-mono font-bold">SUBJ</span>
+                                            <span v-if="!unsMatrix.data[tid] || !unsMatrix.data[tid][b]" class="text-gray-300">·</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr v-if="unsMatrixFiltered.tids.length === 0">
+                                    <td :colspan="unsMatrix.brands.length + 1" class="px-3 py-8 text-center text-xs text-gray-400">
+                                        No templates match the current filters.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- ─── BY TEMPLATE VIEW ─── -->
+                <div v-if="unsStats.total && unsView==='byTemplate'" class="space-y-2">
+                    <div v-for="grp in unsByTemplateView" :key="grp.tid"
+                        class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                        <div class="px-4 py-2 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between flex-wrap gap-2">
+                            <div class="flex items-center gap-2 min-w-0">
+                                <span class="font-mono text-sm font-semibold text-indigo-800 truncate">{{grp.tid}}</span>
+                                <span class="text-[10px] text-indigo-500 shrink-0">
+                                    {{grp.brandCount}} brand{{grp.brandCount === 1 ? '' : 's'}} ·
+                                    {{grp.htmlCount}} html · {{grp.subjectCount}} subject
+                                </span>
+                            </div>
+                        </div>
+                        <div class="p-3 flex flex-wrap gap-1.5">
+                            <div v-for="b in grp.brands" :key="b.brandId"
+                                class="inline-flex items-center gap-1.5 px-2 py-1 bg-gray-50 border border-gray-200 rounded">
+                                <span class="font-mono text-[11px] font-semibold text-gray-700">{{b.brandId}}</span>
+                                <span class="text-[10px] text-gray-400">{{unsBrandName(b.brandId) || '?'}}</span>
+                                <span v-if="b.html" class="px-1 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[9px] font-mono font-bold">HTML</span>
+                                <span v-if="b.subject" class="px-1 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-mono font-bold">SUBJ</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-if="unsByTemplateView.length === 0" class="bg-white border border-gray-200 rounded-lg p-8 text-center text-xs text-gray-400">
+                        No templates match the current filters.
+                    </div>
+                </div>
+
+                <!-- ─── BY BRAND VIEW ─── -->
+                <div v-if="unsStats.total && unsView==='byBrand'" class="space-y-2">
+                    <div v-for="grp in unsByBrandView" :key="grp.brandId"
+                        class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                        <div class="px-4 py-2 bg-amber-50 border-b border-amber-100 flex items-center justify-between flex-wrap gap-2">
+                            <div class="flex items-center gap-2 min-w-0">
+                                <span class="font-mono text-sm font-semibold text-amber-800">{{grp.brandId}}</span>
+                                <span class="text-[11px] text-amber-700">{{unsBrandName(grp.brandId) || 'unknown brand'}}</span>
+                                <span class="text-[10px] text-amber-500 shrink-0">
+                                    {{grp.tidCount}} template{{grp.tidCount === 1 ? '' : 's'}} ·
+                                    {{grp.htmlCount}} html · {{grp.subjectCount}} subject
+                                </span>
+                            </div>
+                        </div>
+                        <div class="p-3 flex flex-wrap gap-1.5">
+                            <div v-for="t in grp.tids" :key="t.tid"
+                                class="inline-flex items-center gap-1.5 px-2 py-1 bg-gray-50 border border-gray-200 rounded">
+                                <span class="font-mono text-[11px] text-gray-700">{{t.tid}}</span>
+                                <span v-if="t.html" class="px-1 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[9px] font-mono font-bold">HTML</span>
+                                <span v-if="t.subject" class="px-1 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-mono font-bold">SUBJ</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-if="unsByBrandView.length === 0" class="bg-white border border-gray-200 rounded-lg p-8 text-center text-xs text-gray-400">
+                        No brands match the current filters.
+                    </div>
+                </div>
+
+                <!-- ─── RAW VIEW ─── -->
+                <div v-if="unsStats.total && unsView==='raw'" class="bg-gray-900 rounded-lg p-4 overflow-auto max-h-[600px]">
+                    <pre class="text-green-400 text-xs font-mono leading-relaxed">{{unsRawJson}}</pre>
+                </div>
+            </div>
+        </main>
+        </template>
+
+        <!-- ═══════════════════════════════════════ -->
+        <!-- ─── COMING SOON TOOL VIEWS ─── -->
+        <!-- ═══════════════════════════════════════ -->
+        <template v-if="activeTool === 'brand-coverage' || activeTool === 'template-diff'">
+        <main class="flex-1 flex flex-col items-center justify-center bg-gray-50 px-6 py-10">
+            <div class="max-w-md text-center bg-white border border-gray-200 rounded-lg shadow-sm p-8">
+                <div class="w-14 h-14 mx-auto mb-3 bg-indigo-100 rounded-full flex items-center justify-center">
+                    <svg class="w-7 h-7 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </div>
+                <div class="text-[10px] uppercase tracking-wider text-indigo-600 font-bold mb-1">Coming soon</div>
+                <h2 class="text-lg font-bold text-gray-800 mb-2">
+                    {{activeTool === 'brand-coverage' ? 'Brand Coverage Audit' : 'Template I18n Diff'}}
+                </h2>
+                <p class="text-sm text-gray-500 mb-4">
+                    <template v-if="activeTool === 'brand-coverage'">
+                        Audit which brands have coverage for which UNS templates. Spot missing combinations
+                        before they ship as silent gaps in production email.
+                    </template>
+                    <template v-else>
+                        Compare <code class="font-mono text-[11px] bg-gray-100 px-1 py-0.5 rounded">.hbs</code> template files across
+                        builds and languages. See string-level diffs, placeholder changes, and structural shifts
+                        between trunk and any release branch.
+                    </template>
+                </p>
+                <button @click="selectTool('key-metadata')"
+                    class="text-xs text-indigo-600 hover:text-indigo-800 hover:underline">
+                    ← Back to Key Metadata Extractor
+                </button>
+            </div>
+        </main>
+        </template>
     </div>
 
     <!-- Toast -->
@@ -876,6 +1430,9 @@ createApp({
         const expanded   = ref(new Set());
         const showToken  = ref(false);
         const sidebarOpen = ref(false);
+        const toolSidebarOpen = ref(false);
+        const activeTool = ref(localStorage.getItem('uns_activeTool') || 'jira-keys');
+        const workingFilesEl = ref(null);
         const viewMode   = ref('cards');
         const toast      = ref('');
         const copyLabel  = ref('Copy JSON');
@@ -901,6 +1458,116 @@ createApp({
         const zipInput      = ref(null);
         const genState = reactive({ generating: false, phase: '', progress: 0, total: 0, error: '' });
         const genResult = ref(null);
+
+        // ═══════════════════════════════════════
+        //  UNS ASSISTANT — Key Metadata Extractor
+        // ═══════════════════════════════════════
+        // Brand IDs ↔ readable names. Seed values come from the Confluence
+        // page "[LQABasicKnowledge] - Brand/Product supported languages
+        // matrix" (Release 25.2). The set is persisted to localStorage and
+        // fully editable in-app — users curate their own list via the
+        // dictionary editor and can "Reset to defaults" to come back here.
+        // Sub-brand IDs (e.g. "3000.Brightspeed") are allowed alongside
+        // plain numeric IDs.
+        const UNS_BRAND_DICT_DEFAULT = {
+            '1210': 'RingCentral',
+            '1250': 'RingCentral for Government',
+            '2000': 'Rise International',
+            '2000.Optus': 'Optus Loop',
+            '2010': 'RingCentral EU',
+            '2020': 'Atos (Unify Office)',
+            '2030': 'Telekom (DT)',
+            '2040': 'Unify Office (DT-Atos)',
+            '2050': 'RingCentral with Sunrise',
+            '2110': 'Rainbow Office',
+            '2210': 'RingCentral with Verizon',
+            '3000': 'Rise America',
+            '3000.Brightspeed': 'Brightspeed',
+            '3000.Zayo': 'Zayo UC+ with RingCentral',
+            '3420': 'AT&T Office@Hand',
+            '3460': 'AT&T Office@Hand UB',
+            '3610': 'RingCentral Canada',
+            '3710': 'RingCentral UK',
+            '4210': 'Ecotel',
+            '4610': 'Eastlink',
+            '4710': 'Versatel',
+            '4810': 'MCM',
+            '4910': 'Frontier',
+            '5010': 'RingCentral AU',
+            '5110': 'Charter SMB',
+            '5210': 'Charter Enterprise',
+            '6010': 'Avaya Cloud Office',
+            '7010': 'Vodafone',
+            '7310': 'TELUS',
+            '7710': 'BT Cloud Work',
+        };
+
+        // Brand IDs in the wild are either plain digits or a digit prefix +
+        // ".<sub-brand>" suffix (e.g. "3000.Brightspeed"). Both forms must
+        // pass parser validation and dictionary entry validation.
+        const UNS_BRAND_ID_RE = /^\d+(?:\.[A-Za-z0-9_]+)?$/;
+
+        // Bumped whenever UNS_BRAND_DICT_DEFAULT changes materially. Older
+        // visitors whose localStorage records a lower seed version get the
+        // new defaults overlaid on next load. Once they make any edit, the
+        // watch persists the edited copy and they hold steady until the next
+        // seed bump.
+        const BRAND_DICT_SEED_VERSION = 2;
+
+        function loadBrandDict() {
+            try {
+                const raw = localStorage.getItem('uns_brandDict');
+                const seed = parseInt(localStorage.getItem('uns_brandDict_seedVersion') || '0', 10);
+
+                // First visit OR seed version outdated → overwrite localStorage
+                // with the latest defaults so the user sees them immediately.
+                // We write back here (not just return) so a refresh without
+                // edits doesn't fall back to the stale stored copy.
+                if (raw == null || !Number.isFinite(seed) || seed < BRAND_DICT_SEED_VERSION) {
+                    const fresh = { ...UNS_BRAND_DICT_DEFAULT };
+                    try {
+                        localStorage.setItem('uns_brandDict', JSON.stringify(fresh));
+                        localStorage.setItem('uns_brandDict_seedVersion', String(BRAND_DICT_SEED_VERSION));
+                    } catch {}
+                    return fresh;
+                }
+
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+            } catch {}
+            return { ...UNS_BRAND_DICT_DEFAULT };
+        }
+
+        const UNS_SAMPLE_KEYS = [
+            'RingCentral.uns.1b165ed92251502e268e4a4708e6a6a0.vodafoneAddInventoryAdminInfo__email_html__7010__en_US',
+            'RingCentral.uns.01b5dd78db597a72c2aa49fa7b762d08.creditCardExpiration__email_html__1210__en_US',
+            'RingCentral.uns.0566572337250f1ce03947e943bb8749.orderShippingDetails__email_html__3460__en_US',
+            'RingCentral.uns.0754331979d96c4ad5a3d7dae6c46a2c.creditCardExpiration__email_html__2110__en_US',
+            'RingCentral.uns.348ea3412f52982d21b9f759872e3517.userLoginInfoForGoogle__email_html__2020__en_US',
+            'RingCentral.uns.5d05ab6055c15db6906894fe4e63c1e6.orderShippingDetails__email_html__1210__en_US',
+            'RingCentral.uns.5f7ece8f728a23ae137d2f5e89cb0e58.orderShippingDetails__email_html__7310__en_US',
+            'RingCentral.uns.61ed9dc58c5a85ceaae2fd0fffd0cd34.creditCardExpiration__email_html__3710__en_US',
+            'RingCentral.uns.7881e1f046692021175031f24e5cce14.creditCardExpiration__email_html__2010__en_US',
+            'RingCentral.uns.9c72e35254e53b52ee9f67aaeeb3ba24.creditCardExpiration__email_html__5010__en_US',
+            'RingCentral.uns.a888142c08546d15d937d7772cae16ad.userLoginInfoForEnigma__email_html__1210__en_US',
+            'RingCentral.uns.ad45d6bc6d394807a1d3d60b66c9b450.shippingConfirmation__email_html__1210__en_US',
+            'RingCentral.uns.ca50a04e1014a96461d36c0ae11df20e.creditCardExpiration__email_html__2020__en_US',
+            'RingCentral.uns.cda0acd01502772ec05de7387e445dda.orderShippingDetails__email_html__7710__en_US',
+            'RingCentral.uns.8d2ce3533e9023e7c5e8fcc464e1eaf9.trialExpirationWarning__email_subject__1210__en_US',
+            'RingCentral.uns.a42f5d0cf148c1a77aee70cff5ed838b.addedSMSRecipientToExtension__email_subject__7310__en_US',
+            'RingCentral.uns.ab0d956194b1f0923347866cc2f186fc.callQueueManagersLoginInfo__email_subject__7710__en_US',
+        ].join('\n');
+
+        const unsKeysInput   = ref(localStorage.getItem('uns_keysInput') || '');
+        const unsView        = ref(localStorage.getItem('uns_view') || 'matrix');
+        const unsKindFilter  = ref('all'); // 'all' | 'html' | 'subject'
+        const unsSearch      = ref('');
+        const unsShowBrandDict = ref(false);
+        const unsBrandDict   = ref(loadBrandDict());
+        const unsNewBrandId   = ref('');
+        const unsNewBrandName = ref('');
+        const unsBrandImportInput = ref(null); // file <input ref> for Import JSON
+        const unsBrandError  = ref('');
 
         // ═══════════════════════════════════════
         //  COMPUTED
@@ -1081,6 +1748,498 @@ createApp({
             const f = bugOverviewFilters;
             return !!(f.key || f.sourceFile || f.sourceText || f.category.length || f.severity.length);
         });
+
+        // ═══════════════════════════════════════
+        //  UNS — App-level computeds
+        // ═══════════════════════════════════════
+        const appVersion = '1.6.0';
+        const appHostLabel = computed(() => {
+            if (typeof location === 'undefined' || !location.host) return 'standalone';
+            return location.host;
+        });
+
+        // Tools belonging to the "UNS TOOLKIT" sidebar section. Everything else
+        // (jira-keys, working-files) is part of the legacy JQL2Keys brand.
+        const UNS_TOOLKIT_TOOLS = new Set(['key-metadata', 'brand-coverage', 'template-diff']);
+        const isUnsTool = computed(() => UNS_TOOLKIT_TOOLS.has(activeTool.value));
+
+        // Per-tool header configuration. Each tool can give its own title,
+        // subtitle, tag pill, and short tool-page heading. Defaults fall back to
+        // either the UNS or JQL2Keys brand based on which section the tool lives
+        // in, so adding a new tool only needs an entry here if you want it to
+        // override the default.
+        const TOOL_HEADER_CONFIG = {
+            'jira-keys': {
+                title: 'JQL2Keys',
+                subtitle: 'Extract translation keys from Jira L10N bugs',
+                tag: 'Jira · L10N',
+            },
+            'working-files': {
+                title: 'JQL2Keys',
+                subtitle: 'Build XTM / OPUS working-files package from extracted keys',
+                tag: 'Jira · L10N',
+            },
+            'key-metadata': {
+                title: 'UNS Assistant',
+                subtitle: 'Localization co-pilot for the Unified Notification Service',
+                tag: 'internal · LQA tools',
+            },
+            'brand-coverage': {
+                title: 'UNS Assistant',
+                subtitle: 'Localization co-pilot for the Unified Notification Service',
+                tag: 'internal · LQA tools',
+            },
+            'template-diff': {
+                title: 'UNS Assistant',
+                subtitle: 'Localization co-pilot for the Unified Notification Service',
+                tag: 'internal · LQA tools',
+            },
+        };
+
+        const headerBranding = computed(() => {
+            const cfg = TOOL_HEADER_CONFIG[activeTool.value];
+            const uns = isUnsTool.value;
+            const defaults = uns
+                ? {
+                      title: 'UNS Assistant',
+                      subtitle: 'Localization co-pilot for the Unified Notification Service',
+                      tag: 'internal · LQA tools',
+                  }
+                : {
+                      title: 'JQL2Keys',
+                      subtitle: 'Extract translation keys from Jira L10N bugs',
+                      tag: 'Jira · L10N',
+                  };
+            return {
+                ...defaults,
+                ...(cfg || {}),
+                iconLabel: uns ? 'UNS' : 'L10N',
+                gradient: uns
+                    ? 'from-indigo-700 via-indigo-700 to-purple-700'
+                    : 'from-blue-700 to-indigo-800',
+                subtitleClass: uns ? 'text-indigo-200' : 'text-blue-200',
+                tagClass: uns ? 'text-indigo-100' : 'text-blue-100',
+            };
+        });
+
+        // ═══════════════════════════════════════
+        //  UNS — Key parser
+        // ═══════════════════════════════════════
+        // A UNS key looks like:
+        //   <namespace>.uns.<hash>.<TID>__<kind>__<BrandID>__<locale>
+        // namespace: usually "RingCentral"; hash: hex (variable length); TID:
+        // camelCase template identifier; kind: e.g. email_html / email_subject;
+        // BrandID: digits; locale: BCP-47-ish (e.g. en_US, fr-CA).
+        function parseUnsKey(line) {
+            const trimmed = (line || '').trim();
+            if (!trimmed) return null;
+
+            // Strip leading bullet markers, leading/trailing quotes, trailing commas
+            const cleaned = trimmed
+                .replace(/^[\s\-\*•‣◦]+/, '')
+                .replace(/^["'`]|["'`,]$/g, '');
+
+            const head = cleaned.match(/^([A-Za-z0-9_]+)\.uns\.([a-fA-F0-9]+)\.(.+)$/);
+            if (!head) return null;
+            const [, namespace, hash, rest] = head;
+
+            const parts = rest.split('__');
+            if (parts.length !== 4) return null;
+
+            const [tid, kind, brandId, locale] = parts;
+            if (!UNS_BRAND_ID_RE.test(brandId)) return null;
+            if (!tid || !kind) return null;
+
+            return { raw: cleaned, namespace, hash, tid, kind, brandId, locale };
+        }
+
+        function unsBrandName(brandId) {
+            return unsBrandDict.value[brandId] || '';
+        }
+
+        const unsBrandDictEntries = computed(() => {
+            return Object.entries(unsBrandDict.value).sort(([a], [b]) => a.localeCompare(b));
+        });
+
+        // ─── Brand dictionary CRUD ──────────────
+        watch(unsBrandDict, (v) => {
+            try { localStorage.setItem('uns_brandDict', JSON.stringify(v || {})); } catch {}
+        }, { deep: true });
+
+        // Brand IDs encountered in pasted keys but absent from the dictionary —
+        // surfaced so the user knows what's missing without leaving the panel.
+        const unsUnmappedBrands = computed(() => {
+            const seen = new Set();
+            for (const item of unsParsed.value.parsed) {
+                if (!unsBrandDict.value[item.brandId]) seen.add(item.brandId);
+            }
+            return [...seen].sort();
+        });
+
+        function addBrandEntry() {
+            unsBrandError.value = '';
+            const id = (unsNewBrandId.value || '').trim();
+            const name = (unsNewBrandName.value || '').trim();
+            if (!UNS_BRAND_ID_RE.test(id)) {
+                unsBrandError.value = 'Brand ID must be digits, optionally followed by ".<sub-brand>" (e.g. 1210 or 3000.Brightspeed)';
+                return false;
+            }
+            if (!name) {
+                unsBrandError.value = 'Brand name is required';
+                return false;
+            }
+            if (unsBrandDict.value[id] && unsBrandDict.value[id] !== name) {
+                if (!confirm(`Brand ${id} already maps to "${unsBrandDict.value[id]}". Overwrite with "${name}"?`)) return false;
+            }
+            unsBrandDict.value = { ...unsBrandDict.value, [id]: name };
+            unsNewBrandId.value = '';
+            unsNewBrandName.value = '';
+            return true;
+        }
+
+        function updateBrandEntry(id, name) {
+            const trimmed = (name || '').trim();
+            if (!trimmed) { deleteBrandEntry(id); return; }
+            if (unsBrandDict.value[id] === trimmed) return;
+            unsBrandDict.value = { ...unsBrandDict.value, [id]: trimmed };
+        }
+
+        function deleteBrandEntry(id) {
+            if (!unsBrandDict.value[id]) return;
+            const next = { ...unsBrandDict.value };
+            delete next[id];
+            unsBrandDict.value = next;
+        }
+
+        function clearBrandDict() {
+            if (!unsBrandDictEntries.value.length) return;
+            if (!confirm(`Remove all ${unsBrandDictEntries.value.length} brand entries?`)) return;
+            unsBrandDict.value = {};
+        }
+
+        function resetBrandDict() {
+            const defaultCount = Object.keys(UNS_BRAND_DICT_DEFAULT).length;
+            const current = unsBrandDictEntries.value.length;
+            if (current > 0 && !confirm(
+                `Replace your current ${current} entrie${current === 1 ? '' : 's'} ` +
+                `with the ${defaultCount} built-in defaults?\n\n` +
+                `(Your manual edits will be lost. Export first if you want a backup.)`
+            )) return;
+            unsBrandDict.value = { ...UNS_BRAND_DICT_DEFAULT };
+            showToast(`Loaded ${defaultCount} default brand${defaultCount === 1 ? '' : 's'}`);
+        }
+
+        function exportBrandDict() {
+            const data = { generated: new Date().toISOString(), brandDictionary: unsBrandDict.value };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `uns-brand-dictionary-${new Date().toISOString().slice(0, 10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('Brand dictionary exported');
+        }
+
+        function openBrandImport() {
+            if (unsBrandImportInput.value) unsBrandImportInput.value.click();
+        }
+
+        async function handleBrandImport(event) {
+            const file = event.target?.files?.[0];
+            if (!file) return;
+            try {
+                const text = await file.text();
+                const parsed = JSON.parse(text);
+                // Accept either { brandDictionary: {...} } or a bare {id: name} object
+                const dict = (parsed && parsed.brandDictionary && typeof parsed.brandDictionary === 'object')
+                    ? parsed.brandDictionary
+                    : parsed;
+                if (!dict || typeof dict !== 'object' || Array.isArray(dict)) {
+                    throw new Error('Expected an object mapping brand IDs to names');
+                }
+                // Sanitize: keep only valid-id → string entries (empty names
+                // allowed so user can import skeletons to fill in later).
+                const clean = {};
+                let kept = 0, skipped = 0;
+                for (const [id, name] of Object.entries(dict)) {
+                    if (UNS_BRAND_ID_RE.test(id) && typeof name === 'string') {
+                        clean[id] = name.trim();
+                        kept++;
+                    } else {
+                        skipped++;
+                    }
+                }
+                const existing = unsBrandDictEntries.value.length;
+                let mode = 'merge';
+                if (existing > 0) {
+                    mode = confirm(`Merge with existing ${existing} entries?\n\nOK = merge (imported wins on conflict)\nCancel = replace all`)
+                        ? 'merge' : 'replace';
+                }
+                unsBrandDict.value = mode === 'merge'
+                    ? { ...unsBrandDict.value, ...clean }
+                    : clean;
+                showToast(`Imported ${kept} brand${kept === 1 ? '' : 's'}${skipped ? ` (${skipped} skipped)` : ''}`);
+            } catch (err) {
+                unsBrandError.value = `Import failed: ${err.message}`;
+            } finally {
+                event.target.value = '';
+            }
+        }
+
+        function importUnmappedBrands() {
+            // One-click: seed the dictionary with all unmapped brand IDs found in
+            // the current keys, leaving the name blank (user fills inline).
+            let added = 0;
+            const next = { ...unsBrandDict.value };
+            for (const id of unsUnmappedBrands.value) {
+                if (!next[id]) {
+                    next[id] = '';
+                    added++;
+                }
+            }
+            unsBrandDict.value = next;
+            if (added) showToast(`Added ${added} blank brand row${added === 1 ? '' : 's'} — fill in the names`);
+        }
+
+        // Parse the raw textarea into structured items + unparsed line list.
+        // Auto-recomputes via Vue reactivity whenever the textarea changes.
+        const unsParsed = computed(() => {
+            const lines = (unsKeysInput.value || '').split(/\r?\n/);
+            const parsed = [];
+            const unparsed = [];
+            const seen = new Set(); // dedupe identical raw keys
+            for (const raw of lines) {
+                if (!raw.trim()) continue;
+                const p = parseUnsKey(raw);
+                if (!p) { unparsed.push(raw); continue; }
+                const dedupKey = `${p.namespace}|${p.tid}|${p.kind}|${p.brandId}|${p.locale}`;
+                if (seen.has(dedupKey)) continue;
+                seen.add(dedupKey);
+                parsed.push(p);
+            }
+            return { parsed, unparsed };
+        });
+
+        // High-level stats shown in the 5-card row.
+        const unsStats = computed(() => {
+            const items = unsParsed.value.parsed;
+            const tids = new Set();
+            const brands = new Set();
+            const locales = new Set();
+            const unknownBrands = new Set();
+            let html = 0, subject = 0, other = 0;
+            for (const i of items) {
+                tids.add(i.tid);
+                brands.add(i.brandId);
+                locales.add(i.locale);
+                if (!unsBrandDict.value[i.brandId]) unknownBrands.add(i.brandId);
+                if (i.kind === 'email_html') html++;
+                else if (i.kind === 'email_subject') subject++;
+                else other++;
+            }
+            return {
+                total: items.length,
+                tids: tids.size,
+                brands: brands.size,
+                locales: locales.size,
+                html, subject, other,
+                unknownBrands: unknownBrands.size,
+                unknownBrandList: [...unknownBrands].sort(),
+            };
+        });
+
+        // Kind-filter predicate used by every view.
+        function unsKindMatches(item) {
+            if (unsKindFilter.value === 'all') return true;
+            if (unsKindFilter.value === 'html') return item.kind === 'email_html';
+            if (unsKindFilter.value === 'subject') return item.kind === 'email_subject';
+            return true;
+        }
+
+        // Search predicate. Searches across TID, brand ID, brand name, locale.
+        function unsSearchMatches(item) {
+            const q = unsSearch.value.trim().toLowerCase();
+            if (!q) return true;
+            const haystack = [
+                item.tid,
+                item.brandId,
+                unsBrandName(item.brandId),
+                item.locale,
+                item.kind,
+            ].join(' ').toLowerCase();
+            return haystack.includes(q);
+        }
+
+        const unsFilteredItems = computed(() =>
+            unsParsed.value.parsed.filter(i => unsKindMatches(i) && unsSearchMatches(i))
+        );
+
+        // By Template view — groups by TID, ordered by template name. Each group
+        // lists the brands present plus html/subject flags.
+        const unsByTemplateView = computed(() => {
+            const byTid = new Map();
+            for (const item of unsFilteredItems.value) {
+                if (!byTid.has(item.tid)) byTid.set(item.tid, new Map());
+                const brandMap = byTid.get(item.tid);
+                if (!brandMap.has(item.brandId)) brandMap.set(item.brandId, { html: false, subject: false });
+                const slot = brandMap.get(item.brandId);
+                if (item.kind === 'email_html') slot.html = true;
+                else if (item.kind === 'email_subject') slot.subject = true;
+            }
+            const out = [];
+            for (const [tid, brandMap] of byTid.entries()) {
+                const brands = [];
+                let htmlCount = 0, subjectCount = 0;
+                for (const [brandId, flags] of brandMap.entries()) {
+                    brands.push({ brandId, html: flags.html, subject: flags.subject });
+                    if (flags.html) htmlCount++;
+                    if (flags.subject) subjectCount++;
+                }
+                brands.sort((a, b) => a.brandId.localeCompare(b.brandId));
+                out.push({
+                    tid, brands,
+                    brandCount: brands.length,
+                    htmlCount, subjectCount,
+                });
+            }
+            out.sort((a, b) => a.tid.localeCompare(b.tid));
+            return out;
+        });
+
+        // By Brand view — mirror of By Template, grouped by brand.
+        const unsByBrandView = computed(() => {
+            const byBrand = new Map();
+            for (const item of unsFilteredItems.value) {
+                if (!byBrand.has(item.brandId)) byBrand.set(item.brandId, new Map());
+                const tidMap = byBrand.get(item.brandId);
+                if (!tidMap.has(item.tid)) tidMap.set(item.tid, { html: false, subject: false });
+                const slot = tidMap.get(item.tid);
+                if (item.kind === 'email_html') slot.html = true;
+                else if (item.kind === 'email_subject') slot.subject = true;
+            }
+            const out = [];
+            for (const [brandId, tidMap] of byBrand.entries()) {
+                const tids = [];
+                let htmlCount = 0, subjectCount = 0;
+                for (const [tid, flags] of tidMap.entries()) {
+                    tids.push({ tid, html: flags.html, subject: flags.subject });
+                    if (flags.html) htmlCount++;
+                    if (flags.subject) subjectCount++;
+                }
+                tids.sort((a, b) => a.tid.localeCompare(b.tid));
+                out.push({
+                    brandId, tids,
+                    tidCount: tids.length,
+                    htmlCount, subjectCount,
+                });
+            }
+            out.sort((a, b) => a.brandId.localeCompare(b.brandId));
+            return out;
+        });
+
+        // Matrix view — Template ID rows × Brand ID columns. Each cell records
+        // whether that (tid, brand) pair has an email_html and/or email_subject
+        // entry. Brands and TIDs come from the *un*filtered set so axes stay
+        // stable, then the filtered set is used to populate cells.
+        const unsMatrix = computed(() => {
+            const tids = new Set();
+            const brands = new Set();
+            const data = {};
+            for (const item of unsParsed.value.parsed) {
+                tids.add(item.tid);
+                brands.add(item.brandId);
+            }
+            // Populate cells from filtered items so kind/search filters affect
+            // which chips show without making rows/cols vanish.
+            for (const item of unsFilteredItems.value) {
+                if (!data[item.tid]) data[item.tid] = {};
+                if (!data[item.tid][item.brandId]) data[item.tid][item.brandId] = { html: false, subject: false };
+                if (item.kind === 'email_html') data[item.tid][item.brandId].html = true;
+                else if (item.kind === 'email_subject') data[item.tid][item.brandId].subject = true;
+            }
+            return {
+                tids: [...tids].sort(),
+                brands: [...brands].sort(),
+                data,
+            };
+        });
+
+        // For the search filter: in matrix view, hide rows whose TID doesn't
+        // match the search and which have no matching cells. Keep all brand
+        // columns (column hiding would be visually disorienting).
+        const unsMatrixFiltered = computed(() => {
+            const q = unsSearch.value.trim().toLowerCase();
+            const all = unsMatrix.value;
+            if (!q && unsKindFilter.value === 'all') return all;
+
+            const visibleTids = all.tids.filter(tid => {
+                const cells = all.data[tid];
+                // TID name match
+                if (q && tid.toLowerCase().includes(q)) return !!cells;
+                // Or a cell exists (kind filter already applied at data level)
+                if (cells && Object.keys(cells).length > 0) {
+                    // Any brand match in search?
+                    if (!q) return true;
+                    for (const b of Object.keys(cells)) {
+                        const haystack = (b + ' ' + (unsBrandName(b) || '')).toLowerCase();
+                        if (haystack.includes(q)) return true;
+                    }
+                }
+                return false;
+            });
+            return { ...all, tids: visibleTids };
+        });
+
+        // Raw JSON export structure — also drives the "Raw" view tab.
+        const unsRawJson = computed(() => {
+            return JSON.stringify(buildUnsExport(), null, 2);
+        });
+
+        function buildUnsExport() {
+            const items = unsParsed.value.parsed;
+            const byTemplate = {};
+            for (const i of items) {
+                if (!byTemplate[i.tid]) byTemplate[i.tid] = {};
+                if (!byTemplate[i.tid][i.brandId]) {
+                    byTemplate[i.tid][i.brandId] = {
+                        brandName: unsBrandName(i.brandId) || null,
+                        hasHtml: false,
+                        hasSubject: false,
+                        locales: [],
+                    };
+                }
+                const slot = byTemplate[i.tid][i.brandId];
+                if (i.kind === 'email_html') slot.hasHtml = true;
+                else if (i.kind === 'email_subject') slot.hasSubject = true;
+                if (i.locale && !slot.locales.includes(i.locale)) slot.locales.push(i.locale);
+            }
+            return {
+                generated: new Date().toISOString(),
+                summary: {
+                    totalKeys: unsStats.value.total,
+                    uniqueTIDs: unsStats.value.tids,
+                    uniqueBrands: unsStats.value.brands,
+                    uniqueLocales: unsStats.value.locales,
+                    emailHtml: unsStats.value.html,
+                    emailSubject: unsStats.value.subject,
+                    other: unsStats.value.other,
+                    unmappedBrands: unsStats.value.unknownBrandList,
+                },
+                templates: byTemplate,
+                brandDictionary: { ...unsBrandDict.value },
+                raw: items.map(i => ({
+                    namespace: i.namespace,
+                    hash: i.hash,
+                    tid: i.tid,
+                    kind: i.kind,
+                    brandId: i.brandId,
+                    brandName: unsBrandName(i.brandId) || null,
+                    locale: i.locale,
+                    key: i.raw,
+                })),
+            };
+        }
 
         // ═══════════════════════════════════════
         //  LOGGING
@@ -2028,8 +3187,65 @@ createApp({
             log('Downloaded working files package', 'success');
         }
 
+        // ═══════════════════════════════════════
+        //  UNS — Tool selector + helpers
+        // ═══════════════════════════════════════
+        function selectTool(tool) {
+            activeTool.value = tool;
+            toolSidebarOpen.value = false; // collapse on mobile after pick
+            if (tool === 'working-files') {
+                // Scroll the existing main view down to the working files card.
+                nextTick(() => {
+                    const el = document.getElementById('working-files-section');
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+            }
+        }
+
+        function jiraDomainUrl() {
+            const d = (config.domain || '').replace(/\/+$/, '');
+            if (!d) return '#';
+            return d.startsWith('http') ? d : 'https://' + d;
+        }
+        function jiraDomainHost() {
+            try {
+                const u = new URL(jiraDomainUrl());
+                return u.host;
+            } catch { return config.domain || ''; }
+        }
+
+        // ═══════════════════════════════════════
+        //  UNS — Persist tool + key input
+        // ═══════════════════════════════════════
+        watch(activeTool, (v) => { localStorage.setItem('uns_activeTool', v); });
+        watch(unsView, (v) => { localStorage.setItem('uns_view', v); });
+        watch(unsKeysInput, (v) => {
+            // Cap at ~100k chars to avoid bloating localStorage with mistakes.
+            const s = (v || '').slice(0, 100000);
+            localStorage.setItem('uns_keysInput', s);
+        });
+
+        function loadUnsSample() {
+            unsKeysInput.value = UNS_SAMPLE_KEYS;
+            showToast('Sample keys loaded');
+        }
+
+        function exportUnsJson() {
+            if (!unsStats.value.total) return;
+            const data = buildUnsExport();
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `uns-key-metadata-${new Date().toISOString().slice(0, 10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('UNS metadata JSON exported');
+        }
+
         return {
             config, state, results, issueMeta, logs, expanded, showToken, sidebarOpen,
+            toolSidebarOpen, activeTool, workingFilesEl,
             viewMode, toast, copyLabel, logPanel, testInput, testOutput,
             sourceZipName, sourceZipInfo, dragOver, zipInput, genState, genResult,
             hasResults, hasIssues, stats, resultJSON, byLangData, byLangAllKeys, byLangStats,
@@ -2045,6 +3261,19 @@ createApp({
             langInResults, formatFileSize, openZipPicker,
             handleSourceZipDrop, handleSourceZipSelect,
             generateWorkingFiles, downloadWorkingFiles,
+            // UNS Assistant
+            appVersion, appHostLabel,
+            isUnsTool, headerBranding,
+            unsKeysInput, unsView, unsKindFilter, unsSearch, unsShowBrandDict,
+            unsParsed, unsStats, unsByTemplateView, unsByBrandView, unsMatrix, unsMatrixFiltered,
+            unsRawJson, unsBrandName, unsBrandDictEntries,
+            unsBrandDict, unsNewBrandId, unsNewBrandName, unsBrandError,
+            unsUnmappedBrands, unsBrandImportInput,
+            addBrandEntry, updateBrandEntry, deleteBrandEntry,
+            clearBrandDict, resetBrandDict, exportBrandDict, openBrandImport, handleBrandImport,
+            importUnmappedBrands,
+            selectTool, loadUnsSample, exportUnsJson,
+            jiraDomainUrl, jiraDomainHost,
         };
     }
 }).mount('#app');

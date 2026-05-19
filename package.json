@@ -1,7 +1,7 @@
 {
   "name": "jql2keys",
-  "version": "1.5.0",
-  "description": "Extract translation keys from Jira L10N bugs via JQL",
+  "version": "1.6.0",
+  "description": "JQL2Keys — UNS Assistant: Jira key extraction, working-files packaging, and UNS key metadata tools",
   "main": "JQL2Keys.js",
   "bin": "JQL2Keys.js",
   "scripts": {
