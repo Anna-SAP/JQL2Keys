@@ -127,6 +127,19 @@
                         <div class="text-[10px] text-gray-500 truncate">Pull TID / Brand / Content kind</div>
                     </div>
                 </button>
+                <button @click="selectTool('utm-analysis')"
+                    :class="['tool-nav-btn relative w-full text-left rounded-md flex items-start gap-2 px-3 py-2 mt-0.5',
+                            activeTool==='utm-analysis' ? 'active' : '']">
+                    <svg class="w-4 h-4 mt-0.5 shrink-0" :class="activeTool==='utm-analysis' ? 'text-indigo-600' : 'text-gray-500'"
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="text-sm font-medium text-gray-800 tool-nav-title">UTM Analysis</span>
+                            <span class="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold tracking-wider">NEW</span>
+                        </div>
+                        <div class="text-[10px] text-gray-500 truncate">Decode UTM URL → TID / Brand / Lang</div>
+                    </div>
+                </button>
                 <button disabled
                     class="relative w-full text-left rounded-md flex items-start gap-2 px-3 py-2 mt-0.5 opacity-60 cursor-not-allowed">
                     <svg class="w-4 h-4 mt-0.5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>
@@ -1295,6 +1308,284 @@
         </template>
 
         <!-- ═══════════════════════════════════════ -->
+        <!-- ─── UTM ANALYSIS TOOL VIEW ─── -->
+        <!-- ═══════════════════════════════════════ -->
+        <template v-if="activeTool === 'utm-analysis'">
+        <main class="flex-1 flex flex-col overflow-y-auto bg-gray-50">
+            <!-- Tool header -->
+            <div class="px-6 py-5 bg-white border-b border-gray-200 flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0">
+                    <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2 flex-wrap">
+                        UTM Analysis
+                        <span class="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold tracking-wider">NEW</span>
+                    </h2>
+                    <p class="text-xs text-gray-500 mt-1 max-w-3xl">
+                        Paste any UNS Template Manager URL — both the
+                        <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">/view/&lt;key&gt;</code>
+                        and <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">/new?~brand=…</code>
+                        shapes are recognised. The tool extracts
+                        <span class="text-indigo-700 font-semibold">TID</span>,
+                        <span class="text-indigo-700 font-semibold">Brands</span>,
+                        <span class="text-indigo-700 font-semibold">Languages</span>, and channel/virtualization info.
+                        Click any chip to copy that single value.
+                    </p>
+                </div>
+            </div>
+
+            <div class="px-6 py-5 space-y-4">
+                <!-- Input card -->
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                    <div class="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+                        <div class="flex items-center gap-2">
+                            <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                            <div>
+                                <div class="text-sm font-semibold text-gray-800">Paste UTM URLs</div>
+                                <div class="text-[11px] text-gray-500">One URL per line — auto-parses as you type</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <button @click="loadUtmSample" type="button"
+                                class="text-[11px] text-indigo-600 hover:text-indigo-800 hover:underline">Load sample</button>
+                            <button @click="utmUrlInput = ''" type="button" :disabled="!utmUrlInput"
+                                class="text-[11px] text-gray-500 hover:text-gray-700 hover:underline disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline">Clear</button>
+                        </div>
+                    </div>
+                    <div class="p-4">
+                        <textarea v-model="utmUrlInput" rows="5" spellcheck="false"
+                            placeholder="http://loc01-t01-uns01.uns-xmn02.svc…/#/notifications/templates/view/callQueueManagersLoginInfo__7710__nl_NL__EMAIL?~locale=nl_NL&#10;http://xmr01-c01-uns01.uns-xmn02.svc…/#/notifications/templates/new?~brand=1210&~brand=3460&~locale=en_US"
+                            class="w-full px-3 py-2 text-xs border border-gray-300 rounded-md font-mono leading-relaxed resize-y outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"></textarea>
+                        <div class="mt-2 text-[11px] text-gray-500">
+                            <template v-if="utmParsedList.length">
+                                <span class="font-semibold text-gray-700">{{utmOkList.length}}</span>
+                                URL{{utmOkList.length === 1 ? '' : 's'}} parsed
+                                <span v-if="utmParsedList.length > utmOkList.length" class="text-amber-600 ml-1">
+                                    · {{utmParsedList.length - utmOkList.length}} invalid
+                                </span>
+                            </template>
+                            <template v-else-if="utmUrlInput.trim()">
+                                <span class="text-amber-600">No URLs recognised yet — paste a full http(s) URL</span>
+                            </template>
+                            <template v-else>
+                                <span class="text-gray-400">Paste a URL above to begin</span>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Empty state -->
+                <div v-if="!utmOkList.length" class="bg-white border border-gray-200 rounded-lg p-10 text-center text-gray-400">
+                    <svg class="w-14 h-14 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                    <p class="text-sm text-gray-500 font-medium">Paste a UNS Template Manager URL above</p>
+                    <p class="text-xs mt-1">Both <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">/view/&lt;key&gt;</code> and <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">/new?…</code> shapes work.</p>
+                </div>
+
+                <!-- Combined summary (multiple URLs) -->
+                <div v-if="utmOkList.length > 1" class="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+                    <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+                        <div>
+                            <div class="text-[11px] font-semibold text-indigo-700 uppercase tracking-wider">Combined summary</div>
+                            <div class="text-[11px] text-indigo-600/70 mt-0.5">
+                                Unique values across {{utmCombined.total}} URL{{utmCombined.total === 1 ? '' : 's'}}
+                                <span v-if="utmCombined.viewCount">· {{utmCombined.viewCount}} view</span>
+                                <span v-if="utmCombined.newCount">· {{utmCombined.newCount}} new</span>
+                                <span v-if="utmCombined.otherCount">· {{utmCombined.otherCount}} other</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="space-y-2">
+                        <div v-if="utmCombined.tids.length" class="flex items-start gap-2 flex-wrap">
+                            <span class="text-[11px] font-semibold text-indigo-700 w-24 shrink-0 pt-1">TID{{utmCombined.tids.length === 1 ? '' : 's'}}</span>
+                            <div class="flex flex-wrap gap-1 flex-1">
+                                <button v-for="t in utmCombined.tids" :key="t" @click="copyText(t)"
+                                    class="px-2 py-0.5 bg-white border border-indigo-300 text-indigo-800 rounded text-[11px] font-mono hover:bg-indigo-100 hover:border-indigo-400 transition cursor-pointer"
+                                    :title="`Copy ${t}`">{{t}}</button>
+                                <button v-if="utmCombined.tids.length > 1" @click="copyText(utmCombined.tids.join('\n'))"
+                                    class="px-2 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-medium hover:bg-indigo-700 transition"
+                                    title="Copy all TIDs (newline-separated)">Copy all</button>
+                            </div>
+                        </div>
+                        <div v-if="utmCombined.brands.length" class="flex items-start gap-2 flex-wrap">
+                            <span class="text-[11px] font-semibold text-indigo-700 w-24 shrink-0 pt-1">Brand{{utmCombined.brands.length === 1 ? '' : 's'}}</span>
+                            <div class="flex flex-wrap gap-1 flex-1">
+                                <button v-for="b in utmCombined.brands" :key="b" @click="copyText(b)"
+                                    class="px-2 py-0.5 bg-white border border-indigo-300 text-indigo-800 rounded text-[11px] font-mono hover:bg-indigo-100 hover:border-indigo-400 transition cursor-pointer"
+                                    :title="unsBrandName(b) ? `${b} · ${unsBrandName(b)} — click to copy` : `Copy ${b}`">
+                                    {{b}}<span v-if="unsBrandName(b)" class="ml-1 text-indigo-500 font-sans font-normal">· {{unsBrandName(b)}}</span>
+                                </button>
+                                <button v-if="utmCombined.brands.length > 1" @click="copyText(utmCombined.brands.join(','))"
+                                    class="px-2 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-medium hover:bg-indigo-700 transition"
+                                    title="Copy all brand IDs (comma-separated)">Copy all</button>
+                            </div>
+                        </div>
+                        <div v-if="utmCombined.locales.length" class="flex items-start gap-2 flex-wrap">
+                            <span class="text-[11px] font-semibold text-indigo-700 w-24 shrink-0 pt-1">Language{{utmCombined.locales.length === 1 ? '' : 's'}}</span>
+                            <div class="flex flex-wrap gap-1 flex-1">
+                                <button v-for="l in utmCombined.locales" :key="l" @click="copyText(l)"
+                                    class="px-2 py-0.5 bg-white border border-indigo-300 text-indigo-800 rounded text-[11px] font-mono hover:bg-indigo-100 hover:border-indigo-400 transition cursor-pointer"
+                                    :title="`Copy ${l}`">{{l}}</button>
+                                <button v-if="utmCombined.locales.length > 1" @click="copyText(utmCombined.locales.join(','))"
+                                    class="px-2 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-medium hover:bg-indigo-700 transition"
+                                    title="Copy all locales (comma-separated)">Copy all</button>
+                            </div>
+                        </div>
+                        <div v-if="utmCombined.channels.length" class="flex items-start gap-2 flex-wrap">
+                            <span class="text-[11px] font-semibold text-indigo-700 w-24 shrink-0 pt-1">Channel</span>
+                            <div class="flex flex-wrap gap-1 flex-1">
+                                <button v-for="c in utmCombined.channels" :key="c" @click="copyText(c)"
+                                    class="px-2 py-0.5 bg-white border border-indigo-300 text-indigo-800 rounded text-[11px] font-mono hover:bg-indigo-100 hover:border-indigo-400 transition cursor-pointer"
+                                    :title="`Copy ${c}`">{{c}}</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Per-URL result cards -->
+                <div v-for="(p, idx) in utmParsedList" :key="idx"
+                    :class="['bg-white border rounded-lg shadow-sm overflow-hidden',
+                            p.ok ? 'border-gray-200' : 'border-red-200']">
+                    <!-- Card header -->
+                    <div :class="['px-4 py-2.5 border-b flex items-center justify-between flex-wrap gap-2',
+                                p.ok ? 'bg-gray-50 border-gray-100' : 'bg-red-50 border-red-100']">
+                        <div class="flex items-center gap-2 min-w-0 flex-1">
+                            <span class="text-[10px] font-semibold text-gray-400 tabular-nums">#{{idx + 1}}</span>
+                            <span v-if="p.ok && p.mode" :class="[
+                                    'px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase',
+                                    p.mode === 'view' ? 'bg-blue-100 text-blue-700'
+                                  : p.mode === 'new'  ? 'bg-emerald-100 text-emerald-700'
+                                                      : 'bg-gray-100 text-gray-700']">{{p.mode}}</span>
+                            <span v-if="!p.ok" class="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[10px] font-bold tracking-wider uppercase">Invalid</span>
+                            <code v-if="p.ok && p.host" class="font-mono text-[11px] text-gray-600 truncate" :title="p.host">{{p.host}}</code>
+                            <code v-else class="font-mono text-[11px] text-red-700 truncate" :title="p.raw">{{p.raw.slice(0, 80)}}{{p.raw.length > 80 ? '…' : ''}}</code>
+                        </div>
+                        <div v-if="p.ok" class="flex items-center gap-1 shrink-0">
+                            <a :href="p.cleaned" target="_blank" rel="noopener"
+                                class="text-[10px] text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1"
+                                title="Open URL in a new tab">
+                                Open
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                            </a>
+                            <button @click="copyText(p.cleaned)" class="text-[10px] text-gray-500 hover:text-gray-700 hover:underline"
+                                title="Copy the full URL">Copy URL</button>
+                        </div>
+                    </div>
+
+                    <!-- Invalid card body -->
+                    <div v-if="!p.ok" class="p-4 text-xs text-red-700">
+                        {{p.error || 'Could not parse this URL.'}}
+                    </div>
+
+                    <!-- Valid card body -->
+                    <div v-else class="p-4">
+                        <table class="w-full text-xs">
+                            <tbody class="divide-y divide-gray-100">
+                                <tr v-if="p.tids.length">
+                                    <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">TID</td>
+                                    <td class="py-2">
+                                        <div class="flex flex-wrap gap-1.5">
+                                            <button v-for="t in p.tids" :key="t" @click="copyText(t)"
+                                                class="px-2 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded text-[11px] font-mono hover:bg-indigo-100 hover:border-indigo-400 transition cursor-pointer"
+                                                :title="`Copy ${t}`">{{t}}</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr v-if="p.brands.length">
+                                    <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+                                        Related Brand{{p.brands.length === 1 ? '' : 's'}}
+                                    </td>
+                                    <td class="py-2">
+                                        <div class="flex flex-wrap gap-1.5">
+                                            <button v-for="b in p.brands" :key="b" @click="copyText(b)"
+                                                class="px-2 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded text-[11px] font-mono hover:bg-indigo-100 hover:border-indigo-400 transition cursor-pointer"
+                                                :title="unsBrandName(b) ? `${b} · ${unsBrandName(b)} — click to copy ID` : `Copy ${b}`">
+                                                {{b}}<span v-if="unsBrandName(b)" class="ml-1 text-indigo-500 font-sans font-normal">· {{unsBrandName(b)}}</span>
+                                            </button>
+                                            <button v-if="p.brands.length > 1" @click="copyText(p.brands.join(','))"
+                                                class="px-2 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-medium hover:bg-indigo-700 transition"
+                                                title="Copy all brand IDs (comma-separated)">Copy all</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr v-if="p.locales.length">
+                                    <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+                                        Related Language{{p.locales.length === 1 ? '' : 's'}}
+                                    </td>
+                                    <td class="py-2">
+                                        <div class="flex flex-wrap gap-1.5">
+                                            <button v-for="l in p.locales" :key="l" @click="copyText(l)"
+                                                class="px-2 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded text-[11px] font-mono hover:bg-indigo-100 hover:border-indigo-400 transition cursor-pointer"
+                                                :title="`Copy ${l}`">{{l}}</button>
+                                            <button v-if="p.locales.length > 1" @click="copyText(p.locales.join(','))"
+                                                class="px-2 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-medium hover:bg-indigo-700 transition"
+                                                title="Copy all locales (comma-separated)">Copy all</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr v-if="p.channels.length">
+                                    <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Channel</td>
+                                    <td class="py-2">
+                                        <div class="flex flex-wrap gap-1.5">
+                                            <button v-for="c in p.channels" :key="c" @click="copyText(c)"
+                                                class="px-2 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 rounded text-[11px] font-mono hover:bg-amber-100 hover:border-amber-400 transition cursor-pointer"
+                                                :title="`Copy ${c}`">{{c}}</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr v-if="p.virtualization">
+                                    <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Virtualization</td>
+                                    <td class="py-2">
+                                        <button @click="copyText(p.virtualization)"
+                                            :class="['px-2 py-0.5 border rounded text-[11px] font-mono transition cursor-pointer',
+                                                    p.virtualization === 'Virtual'
+                                                        ? 'bg-purple-50 border-purple-200 text-purple-800 hover:bg-purple-100'
+                                                        : 'bg-slate-50 border-slate-200 text-slate-800 hover:bg-slate-100']"
+                                            :title="`~virtual=${p.qVirtual} — click to copy`">{{p.virtualization}}</button>
+                                        <span class="ml-2 text-[10px] text-gray-400">~virtual={{p.qVirtual}}</span>
+                                    </td>
+                                </tr>
+                                <tr v-if="p.env">
+                                    <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Environment</td>
+                                    <td class="py-2">
+                                        <button @click="copyText(p.env)"
+                                            class="px-2 py-0.5 bg-gray-50 border border-gray-200 text-gray-700 rounded text-[11px] font-mono hover:bg-gray-100 hover:border-gray-400 transition cursor-pointer"
+                                            :title="`Copy ${p.env}`">{{p.env}}</button>
+                                        <span class="ml-2 text-[10px] text-gray-400">{{p.host}}</span>
+                                    </td>
+                                </tr>
+                                <tr v-if="p.pathKey">
+                                    <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Path key</td>
+                                    <td class="py-2">
+                                        <button @click="copyText(p.pathKey)"
+                                            class="px-2 py-0.5 bg-gray-50 border border-gray-200 text-gray-700 rounded text-[11px] font-mono hover:bg-gray-100 hover:border-gray-400 transition cursor-pointer break-all text-left"
+                                            :title="`Copy ${p.pathKey}`">{{p.pathKey}}</button>
+                                    </td>
+                                </tr>
+                                <tr v-if="p.extraParams.length">
+                                    <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Other params</td>
+                                    <td class="py-2">
+                                        <div class="flex flex-wrap gap-1.5">
+                                            <button v-for="(ep, ei) in p.extraParams" :key="ei"
+                                                @click="copyText(ep.value)"
+                                                class="px-2 py-0.5 bg-gray-50 border border-gray-200 text-gray-700 rounded text-[11px] font-mono hover:bg-gray-100 hover:border-gray-400 transition cursor-pointer"
+                                                :title="`Copy value of ${ep.key}`">
+                                                <span class="text-gray-500">{{ep.key}}=</span>{{ep.value}}
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr v-if="!p.tids.length && !p.brands.length && !p.locales.length && !p.channels.length">
+                                    <td colspan="2" class="py-3 text-[11px] text-amber-700 bg-amber-50 px-2 rounded">
+                                        URL is valid but no UNS-style TID / Brand / Locale info was found in the path or query.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+        </template>
+
+        <!-- ═══════════════════════════════════════ -->
         <!-- ─── COMING SOON TOOL VIEWS ─── -->
         <!-- ═══════════════════════════════════════ -->
         <template v-if="activeTool === 'brand-coverage' || activeTool === 'template-diff'">
@@ -1558,6 +1849,14 @@ createApp({
             'RingCentral.uns.ab0d956194b1f0923347866cc2f186fc.callQueueManagersLoginInfo__email_subject__7710__en_US',
         ].join('\n');
 
+        // Sample UTM URLs covering both shapes the UNS Template Manager produces:
+        //   (a) /view/<key>?…  — opening a single template
+        //   (b) /new?~brand=…&~locale=…&~notificationId=…  — creation form
+        const UTM_SAMPLE_URLS = [
+            'http://loc01-t01-uns01.uns-xmn02.svc.c01.k01.k8s.xmn02.int.rclabenv.com:8080/#/notifications/templates/view/callQueueManagersLoginInfo__7710__nl_NL__EMAIL?~locale=nl_NL&~notificationId=callQueueManagersLoginInfo&~virtual=false',
+            'http://xmr01-c01-uns01.uns-xmn02.svc.c01.k01.k8s.xmn02.int.rclabenv.com:8080/#/notifications/templates/new?~brand=1210&~brand=3460&~brand=7710&~brand=2110&~locale=en_US&~locale=fr_FR&~locale=es_ES&~notificationId=callQueueManagersLoginInfo',
+        ].join('\n');
+
         const unsKeysInput   = ref(localStorage.getItem('uns_keysInput') || '');
         const unsView        = ref(localStorage.getItem('uns_view') || 'matrix');
         const unsKindFilter  = ref('all'); // 'all' | 'html' | 'subject'
@@ -1568,6 +1867,9 @@ createApp({
         const unsNewBrandName = ref('');
         const unsBrandImportInput = ref(null); // file <input ref> for Import JSON
         const unsBrandError  = ref('');
+
+        // ─── UTM Analysis state ──────────────────
+        const utmUrlInput = ref(localStorage.getItem('uns_utmUrlInput') || '');
 
         // ═══════════════════════════════════════
         //  COMPUTED
@@ -1752,7 +2054,7 @@ createApp({
         // ═══════════════════════════════════════
         //  UNS — App-level computeds
         // ═══════════════════════════════════════
-        const appVersion = '1.6.0';
+        const appVersion = '1.7.0';
         const appHostLabel = computed(() => {
             if (typeof location === 'undefined' || !location.host) return 'standalone';
             return location.host;
@@ -1760,7 +2062,7 @@ createApp({
 
         // Tools belonging to the "UNS TOOLKIT" sidebar section. Everything else
         // (jira-keys, working-files) is part of the legacy JQL2Keys brand.
-        const UNS_TOOLKIT_TOOLS = new Set(['key-metadata', 'brand-coverage', 'template-diff']);
+        const UNS_TOOLKIT_TOOLS = new Set(['key-metadata', 'utm-analysis', 'brand-coverage', 'template-diff']);
         const isUnsTool = computed(() => UNS_TOOLKIT_TOOLS.has(activeTool.value));
 
         // Per-tool header configuration. Each tool can give its own title,
@@ -1782,6 +2084,11 @@ createApp({
             'key-metadata': {
                 title: 'UNS Assistant',
                 subtitle: 'Localization co-pilot for the Unified Notification Service',
+                tag: 'internal · LQA tools',
+            },
+            'utm-analysis': {
+                title: 'UNS Assistant',
+                subtitle: 'Decode UNS Template Manager URLs into TIDs, brands & locales',
                 tag: 'internal · LQA tools',
             },
             'brand-coverage': {
@@ -3224,10 +3531,156 @@ createApp({
             const s = (v || '').slice(0, 100000);
             localStorage.setItem('uns_keysInput', s);
         });
+        watch(utmUrlInput, (v) => {
+            const s = (v || '').slice(0, 100000);
+            localStorage.setItem('uns_utmUrlInput', s);
+        });
 
         function loadUnsSample() {
             unsKeysInput.value = UNS_SAMPLE_KEYS;
             showToast('Sample keys loaded');
+        }
+
+        // ═══════════════════════════════════════
+        //  UNS — UTM Analysis (URL decoder)
+        // ═══════════════════════════════════════
+        // Recognised UNS Template Manager URL shapes:
+        //   (a) <host>/#/notifications/templates/view/<TID>__<BrandID>__<locale>__<CHANNEL>?…
+        //   (b) <host>/#/notifications/templates/new?~brand=…&~locale=…&~notificationId=…
+        // The query string lives inside the hash (SPA routing), so URLSearchParams
+        // can't be used on the URL directly — we split the hash ourselves.
+        function parseUtmUrl(input) {
+            const raw = String(input || '').trim();
+            if (!raw) return null;
+
+            // Strip common copy-paste decorations (Markdown < >, surrounding quotes,
+            // trailing punctuation).
+            const cleaned = raw
+                .replace(/^[<\[("']+|[>\])"',.;]+$/g, '');
+
+            let url;
+            try { url = new URL(cleaned); }
+            catch { return { raw, ok: false, error: 'Not a valid URL' }; }
+
+            const host = url.host;
+            // Environment prefix is the leading host component, e.g.
+            // "loc01-t01-uns01" from "loc01-t01-uns01.uns-xmn02.svc….rclabenv.com".
+            const envMatch = host.match(/^([a-z0-9][a-z0-9-]*?)\.[a-z]/i);
+            const env = envMatch ? envMatch[1] : '';
+
+            // Hash is "#/notifications/templates/<view|new>[…]?<query>"
+            const hashContent = (url.hash || '').replace(/^#/, '');
+            const qIdx = hashContent.indexOf('?');
+            const hashPath = qIdx >= 0 ? hashContent.slice(0, qIdx) : hashContent;
+            const queryString = qIdx >= 0 ? hashContent.slice(qIdx + 1) : '';
+
+            let mode = '';     // 'view' | 'new' | 'edit' | …
+            let pathKey = '';  // raw key segment after /view/ if present
+            const modeMatch = hashPath.match(/\/notifications\/templates\/([a-z]+)(?:\/(.+))?/i);
+            if (modeMatch) {
+                mode = modeMatch[1].toLowerCase();
+                pathKey = decodeURIComponent(modeMatch[2] || '');
+            }
+
+            // Decompose the path key — expected layout is
+            //   <TID>__<BrandID>__<locale>__<CHANNEL>
+            // but be lenient if the segment count differs.
+            let pathTid = '', pathBrand = '', pathLocale = '', pathChannel = '';
+            if (pathKey) {
+                const parts = pathKey.split('__');
+                if (parts.length >= 1) pathTid = parts[0];
+                if (parts.length >= 2 && UNS_BRAND_ID_RE.test(parts[1])) pathBrand = parts[1];
+                if (parts.length >= 3) pathLocale = parts[2];
+                if (parts.length >= 4) pathChannel = parts.slice(3).join('__');
+            }
+
+            // Query params — keys are typically tilde-prefixed (~brand, ~locale, …)
+            // and may repeat. URLSearchParams handles that with .getAll().
+            const params = new URLSearchParams(queryString);
+            const allParams = [];
+            for (const [k, v] of params.entries()) allParams.push({ key: k, value: v });
+
+            const qBrands  = params.getAll('~brand');
+            const qLocales = params.getAll('~locale');
+            const qTids    = params.getAll('~notificationId');
+            const qVirtual = params.has('~virtual') ? params.get('~virtual') : null;
+            const qChannel = params.get('~channel') || params.get('~mode') || '';
+
+            const uniq = (arr) => [...new Set(arr.filter(Boolean))];
+            const tids    = uniq([pathTid,    ...qTids]);
+            const brands  = uniq([pathBrand,  ...qBrands]);
+            const locales = uniq([pathLocale, ...qLocales]);
+            const channels = uniq([pathChannel, qChannel]);
+
+            // Surface any additional params we didn't explicitly recognise so the
+            // user can spot environment-specific flags without re-reading the URL.
+            const recognised = new Set(['~brand', '~locale', '~notificationId', '~virtual', '~channel', '~mode']);
+            const extraParams = allParams.filter(p => !recognised.has(p.key));
+
+            let virtualization = '';
+            if (qVirtual === 'true')  virtualization = 'Virtual';
+            else if (qVirtual === 'false') virtualization = 'Actual';
+            else if (qVirtual !== null)    virtualization = qVirtual;
+
+            return {
+                raw,
+                cleaned,
+                ok: true,
+                host,
+                env,
+                mode,
+                pathKey,
+                tids, brands, locales, channels,
+                channelType: channels.join(', '),
+                virtualization,
+                qVirtual,
+                extraParams,
+            };
+        }
+
+        // Auto-parse every non-blank line in the textarea.
+        const utmParsedList = computed(() => {
+            const lines = (utmUrlInput.value || '').split(/\r?\n+/);
+            const out = [];
+            for (const line of lines) {
+                if (!line.trim()) continue;
+                const p = parseUtmUrl(line);
+                if (p) out.push(p);
+            }
+            return out;
+        });
+
+        const utmOkList = computed(() => utmParsedList.value.filter(p => p.ok));
+
+        // Cross-URL aggregate, shown when more than one URL is parsed.
+        const utmCombined = computed(() => {
+            const all = utmOkList.value;
+            const tids = new Set(), brands = new Set(), locales = new Set(), channels = new Set(), hosts = new Set();
+            let viewCount = 0, newCount = 0, otherCount = 0;
+            for (const p of all) {
+                p.tids.forEach(t => tids.add(t));
+                p.brands.forEach(b => brands.add(b));
+                p.locales.forEach(l => locales.add(l));
+                p.channels.forEach(c => channels.add(c));
+                if (p.host) hosts.add(p.host);
+                if (p.mode === 'view') viewCount++;
+                else if (p.mode === 'new') newCount++;
+                else otherCount++;
+            }
+            return {
+                tids: [...tids].sort(),
+                brands: [...brands].sort(),
+                locales: [...locales].sort(),
+                channels: [...channels].sort(),
+                hosts: [...hosts].sort(),
+                total: all.length,
+                viewCount, newCount, otherCount,
+            };
+        });
+
+        function loadUtmSample() {
+            utmUrlInput.value = UTM_SAMPLE_URLS;
+            showToast('Sample URLs loaded');
         }
 
         function exportUnsJson() {
@@ -3273,6 +3726,8 @@ createApp({
             clearBrandDict, resetBrandDict, exportBrandDict, openBrandImport, handleBrandImport,
             importUnmappedBrands,
             selectTool, loadUnsSample, exportUnsJson,
+            // UTM Analysis
+            utmUrlInput, utmParsedList, utmOkList, utmCombined, loadUtmSample,
             jiraDomainUrl, jiraDomainHost,
         };
     }
