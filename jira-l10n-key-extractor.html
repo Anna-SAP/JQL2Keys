@@ -1394,7 +1394,7 @@
                     </div>
                     <div class="space-y-2">
                         <div v-if="utmCombined.tids.length" class="flex items-start gap-2 flex-wrap">
-                            <span class="text-[11px] font-semibold text-indigo-700 w-24 shrink-0 pt-1">TID{{utmCombined.tids.length === 1 ? '' : 's'}}</span>
+                            <span class="text-[11px] font-semibold text-indigo-700 w-24 shrink-0 pt-1">TID{{utmCombined.tids.length === 1 ? '' : 's'}} <span class="text-indigo-400 font-normal tabular-nums">({{utmCombined.tids.length}})</span></span>
                             <div class="flex flex-wrap gap-1 flex-1">
                                 <button v-for="t in utmCombined.tids" :key="t" @click="copyText(t)"
                                     class="px-2 py-0.5 bg-white border border-indigo-300 text-indigo-800 rounded text-[11px] font-mono hover:bg-indigo-100 hover:border-indigo-400 transition cursor-pointer"
@@ -1405,7 +1405,7 @@
                             </div>
                         </div>
                         <div v-if="utmCombined.brands.length" class="flex items-start gap-2 flex-wrap">
-                            <span class="text-[11px] font-semibold text-indigo-700 w-24 shrink-0 pt-1">Brand{{utmCombined.brands.length === 1 ? '' : 's'}}</span>
+                            <span class="text-[11px] font-semibold text-indigo-700 w-24 shrink-0 pt-1">Brand{{utmCombined.brands.length === 1 ? '' : 's'}} <span class="text-indigo-400 font-normal tabular-nums">({{utmCombined.brands.length}})</span></span>
                             <div class="flex flex-wrap gap-1 flex-1">
                                 <button v-for="b in utmCombined.brands" :key="b" @click="copyText(b)"
                                     class="px-2 py-0.5 bg-white border border-indigo-300 text-indigo-800 rounded text-[11px] font-mono hover:bg-indigo-100 hover:border-indigo-400 transition cursor-pointer"
@@ -1418,7 +1418,7 @@
                             </div>
                         </div>
                         <div v-if="utmCombined.locales.length" class="flex items-start gap-2 flex-wrap">
-                            <span class="text-[11px] font-semibold text-indigo-700 w-24 shrink-0 pt-1">Language{{utmCombined.locales.length === 1 ? '' : 's'}}</span>
+                            <span class="text-[11px] font-semibold text-indigo-700 w-24 shrink-0 pt-1">Language{{utmCombined.locales.length === 1 ? '' : 's'}} <span class="text-indigo-400 font-normal tabular-nums">({{utmCombined.locales.length}})</span></span>
                             <div class="flex flex-wrap gap-1 flex-1">
                                 <button v-for="l in utmCombined.locales" :key="l" @click="copyText(l)"
                                     class="px-2 py-0.5 bg-white border border-indigo-300 text-indigo-800 rounded text-[11px] font-mono hover:bg-indigo-100 hover:border-indigo-400 transition cursor-pointer"
@@ -1429,7 +1429,7 @@
                             </div>
                         </div>
                         <div v-if="utmCombined.channels.length" class="flex items-start gap-2 flex-wrap">
-                            <span class="text-[11px] font-semibold text-indigo-700 w-24 shrink-0 pt-1">Channel</span>
+                            <span class="text-[11px] font-semibold text-indigo-700 w-24 shrink-0 pt-1">Channel <span class="text-indigo-400 font-normal tabular-nums">({{utmCombined.channels.length}})</span></span>
                             <div class="flex flex-wrap gap-1 flex-1">
                                 <button v-for="c in utmCombined.channels" :key="c" @click="copyText(c)"
                                     class="px-2 py-0.5 bg-white border border-indigo-300 text-indigo-800 rounded text-[11px] font-mono hover:bg-indigo-100 hover:border-indigo-400 transition cursor-pointer"
@@ -1479,7 +1479,7 @@
                         <table class="w-full text-xs">
                             <tbody class="divide-y divide-gray-100">
                                 <tr v-if="p.tids.length">
-                                    <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">TID</td>
+                                    <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">TID <span class="text-gray-400 font-normal normal-case tabular-nums">({{p.tids.length}})</span></td>
                                     <td class="py-2">
                                         <div class="flex flex-wrap gap-1.5">
                                             <button v-for="t in p.tids" :key="t" @click="copyText(t)"
@@ -1490,7 +1490,7 @@
                                 </tr>
                                 <tr v-if="p.brands.length">
                                     <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                                        Related Brand{{p.brands.length === 1 ? '' : 's'}}
+                                        Related Brand{{p.brands.length === 1 ? '' : 's'}} <span class="text-gray-400 font-normal normal-case tabular-nums">({{p.brands.length}})</span>
                                     </td>
                                     <td class="py-2">
                                         <div class="flex flex-wrap gap-1.5">
@@ -1507,7 +1507,7 @@
                                 </tr>
                                 <tr v-if="p.locales.length">
                                     <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                                        Related Language{{p.locales.length === 1 ? '' : 's'}}
+                                        Related Language{{p.locales.length === 1 ? '' : 's'}} <span class="text-gray-400 font-normal normal-case tabular-nums">({{p.locales.length}})</span>
                                     </td>
                                     <td class="py-2">
                                         <div class="flex flex-wrap gap-1.5">
@@ -1521,7 +1521,7 @@
                                     </td>
                                 </tr>
                                 <tr v-if="p.channels.length">
-                                    <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Channel</td>
+                                    <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Channel <span class="text-gray-400 font-normal normal-case tabular-nums">({{p.channels.length}})</span></td>
                                     <td class="py-2">
                                         <div class="flex flex-wrap gap-1.5">
                                             <button v-for="c in p.channels" :key="c" @click="copyText(c)"
@@ -1531,7 +1531,7 @@
                                     </td>
                                 </tr>
                                 <tr v-if="p.virtualization">
-                                    <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Virtualization</td>
+                                    <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Virtualization <span class="text-gray-400 font-normal normal-case tabular-nums">(1)</span></td>
                                     <td class="py-2">
                                         <button @click="copyText(p.virtualization)"
                                             :class="['px-2 py-0.5 border rounded text-[11px] font-mono transition cursor-pointer',
@@ -1543,7 +1543,7 @@
                                     </td>
                                 </tr>
                                 <tr v-if="p.env">
-                                    <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Environment</td>
+                                    <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Environment <span class="text-gray-400 font-normal normal-case tabular-nums">(1)</span></td>
                                     <td class="py-2">
                                         <button @click="copyText(p.env)"
                                             class="px-2 py-0.5 bg-gray-50 border border-gray-200 text-gray-700 rounded text-[11px] font-mono hover:bg-gray-100 hover:border-gray-400 transition cursor-pointer"
@@ -1552,7 +1552,7 @@
                                     </td>
                                 </tr>
                                 <tr v-if="p.pathKey">
-                                    <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Path key</td>
+                                    <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Path key <span class="text-gray-400 font-normal normal-case tabular-nums">(1)</span></td>
                                     <td class="py-2">
                                         <button @click="copyText(p.pathKey)"
                                             class="px-2 py-0.5 bg-gray-50 border border-gray-200 text-gray-700 rounded text-[11px] font-mono hover:bg-gray-100 hover:border-gray-400 transition cursor-pointer break-all text-left"
@@ -1560,7 +1560,7 @@
                                     </td>
                                 </tr>
                                 <tr v-if="p.extraParams.length">
-                                    <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Other params</td>
+                                    <td class="py-2 pr-3 align-top w-32 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Other params <span class="text-gray-400 font-normal normal-case tabular-nums">({{p.extraParams.length}})</span></td>
                                     <td class="py-2">
                                         <div class="flex flex-wrap gap-1.5">
                                             <button v-for="(ep, ei) in p.extraParams" :key="ei"
@@ -2054,7 +2054,7 @@ createApp({
         // ═══════════════════════════════════════
         //  UNS — App-level computeds
         // ═══════════════════════════════════════
-        const appVersion = '1.7.0';
+        const appVersion = '1.7.1';
         const appHostLabel = computed(() => {
             if (typeof location === 'undefined' || !location.host) return 'standalone';
             return location.host;

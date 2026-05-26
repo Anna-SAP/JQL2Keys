@@ -1,6 +1,6 @@
 {
   "name": "jql2keys",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "JQL2Keys — UNS Assistant: Jira key extraction, working-files packaging, and UNS key metadata tools",
   "main": "JQL2Keys.js",
   "bin": "JQL2Keys.js",
