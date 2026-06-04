@@ -1689,6 +1689,10 @@ const DEFAULT_ALL_LANGS = [
 // Standalone "all languages / all langs / all locales" mention.
 const ALL_LANGS_RE = /\ball\s+(?:languages|langs|locales)\b/i;
 
+// Bucket for keys found without any detectable language context. Surfaced in
+// results (instead of being dropped) so extracted keys are never lost silently.
+const UNKNOWN_LANG = '(unknown)';
+
 function parseLangList(raw) {
     if (!raw) return [];
     return String(raw)
@@ -2054,7 +2058,7 @@ createApp({
         // ═══════════════════════════════════════
         //  UNS — App-level computeds
         // ═══════════════════════════════════════
-        const appVersion = '1.7.1';
+        const appVersion = '1.7.2';
         const appHostLabel = computed(() => {
             if (typeof location === 'undefined' || !location.host) return 'standalone';
             return location.host;
@@ -2871,8 +2875,12 @@ createApp({
 
             const lines = cleaned.split(/\r?\n/);
 
-            // Language code: standalone BCP-47 tag (e.g. es-ES, pt-BR, ja-JP)
-            const langRe = /^\s*([a-z]{2}-[A-Z]{2})\s*$/;
+            // Language section header: a BCP-47 tag (es-ES, pt-BR, ja-JP, es-419)
+            // that opens a language block. Tolerates Jira/markdown list & heading
+            // markup in front (e.g. "# zh-CN", "* it-IT", "- de-DE") and an optional
+            // trailing annotation (e.g. "pt-PT (大量未翻译)"). The lookahead keeps the
+            // code from swallowing longer tokens (so "it-ITALIAN" is NOT a header).
+            const langRe = /^[\s>#*+\-]*([a-z]{2,3}-(?:[A-Z]{2,4}|\d{3}))(?=$|[\s(),.:：—–\-]).*/;
 
             // Build key regex
             let keyRe;
@@ -2931,9 +2939,15 @@ createApp({
                 }
             }
 
-            // Assign orphan keys to fallback languages (from issue title)
-            if (orphanKeys.length > 0 && fallbackLangs.length > 0) {
-                for (const lang of fallbackLangs) {
+            // Orphan keys = keys found with no enclosing language section.
+            if (orphanKeys.length > 0) {
+                // Prefer fallback languages inferred from the issue title/fields.
+                // If none exist, still surface the keys under a sentinel bucket so
+                // they are never silently dropped (the cause of a confusing
+                // "1 bug / 0 keys" result). Downstream views and the ZIP generator
+                // treat an unknown lang as "source missing", which is accurate here.
+                const targets = fallbackLangs.length > 0 ? fallbackLangs : [UNKNOWN_LANG];
+                for (const lang of targets) {
                     if (!result[lang]) result[lang] = [];
                     for (const k of orphanKeys) {
                         if (!result[lang].includes(k)) result[lang].push(k);
