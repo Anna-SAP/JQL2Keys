@@ -13,10 +13,133 @@ const https = require('https');
 const { URL } = require('url');
 const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
 
 const DEFAULT_PORT = 3001;
 const PORT = parseInt(process.argv[2], 10) || DEFAULT_PORT;
+
+// ═══════════════════════════════════════
+//  UNS template/partial classifier
+// ═══════════════════════════════════════
+// The UNS repo (git.ringcentral.com/common/uns) stores email templates as
+// top-level folders under uns-app/templateStorage and uns-app/newTemplateStorage,
+// and reusable fragments ("partials") as folders under each storage's _partials
+// subfolder. This lister reads the LOCAL clone only (no network) and reports
+// the two name sets so the SPA can tell, for any extracted TID, whether it is a
+// template, a partial, or both. It prefers the `master` tree via `git ls-tree`
+// (so the answer reflects master regardless of which branch is checked out) and
+// falls back to the working tree on disk when git is unavailable.
+const DEFAULT_UNS_ROOT = process.env.UNS_REPO_ROOT || 'C:\\Users\\susu82\\SW\\UNS';
+const UNS_STORAGES = ['templateStorage', 'newTemplateStorage'];
+
+function execFileP(cmd, args, opts) {
+    return new Promise((resolve) => {
+        execFile(cmd, args, { maxBuffer: 16 * 1024 * 1024, ...opts }, (err, stdout, stderr) => {
+            resolve({ err, stdout: stdout || '', stderr: stderr || '' });
+        });
+    });
+}
+
+// List immediate sub-directory names of a git tree-ish (e.g. "master:uns-app/
+// templateStorage"). Returns basenames; [] when the path is absent on the ref
+// or git errors for any reason.
+async function gitListDirs(toplevel, treeish) {
+    const { err, stdout } = await execFileP('git', ['-C', toplevel, 'ls-tree', '-d', '--name-only', treeish]);
+    if (err) return [];
+    return stdout.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+}
+
+// List immediate sub-directory names on disk; null if the dir can't be read.
+function fsListDirs(absPath) {
+    try {
+        return fs.readdirSync(absPath, { withFileTypes: true })
+            .filter(d => { try { return d.isDirectory(); } catch { return false; } })
+            .map(d => d.name);
+    } catch { return null; }
+}
+
+async function handleUnsTemplates(reqUrl, res) {
+    const sendJson = (code, obj) => {
+        res.writeHead(code, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(obj));
+    };
+    try {
+        const rootParam = (reqUrl.searchParams.get('root') || DEFAULT_UNS_ROOT).trim();
+        const ref = (reqUrl.searchParams.get('ref') || 'master').trim() || 'master';
+        if (!rootParam) return sendJson(400, { ok: false, error: 'Missing "root" (path to the local UNS clone)' });
+        if (!fs.existsSync(rootParam)) return sendJson(400, { ok: false, error: `Path not found: ${rootParam}` });
+
+        // Accept either the repo root (…/uns) or the uns-app folder directly.
+        let base = rootParam;
+        if (fs.existsSync(path.join(rootParam, 'uns-app', 'templateStorage')) ||
+            fs.existsSync(path.join(rootParam, 'uns-app', 'newTemplateStorage'))) {
+            base = path.join(rootParam, 'uns-app');
+        }
+        const hasAnyStorage = UNS_STORAGES.some(s => fs.existsSync(path.join(base, s)));
+        if (!hasAnyStorage) {
+            return sendJson(400, {
+                ok: false,
+                error: `No templateStorage/newTemplateStorage under "${base}". Point "root" at the UNS repo root (…/uns) or its uns-app folder.`,
+            });
+        }
+
+        // Establish the git context. `git ls-tree <ref>:<path>` wants a path
+        // relative to the repo toplevel, so resolve toplevel + the prefix from
+        // toplevel down to `base`, then verify the ref's tree exists.
+        let gitOk = false, toplevel = '', prefix = '';
+        const tl = await execFileP('git', ['-C', base, 'rev-parse', '--show-toplevel']);
+        const pf = await execFileP('git', ['-C', base, 'rev-parse', '--show-prefix']);
+        if (!tl.err && !pf.err) {
+            toplevel = tl.stdout.trim();
+            prefix = pf.stdout.trim(); // "uns-app/" (always forward-slashed) or ""
+            const rv = await execFileP('git', ['-C', toplevel, 'rev-parse', '--verify', `${ref}^{tree}`]);
+            gitOk = !rv.err;
+        }
+        const mode = gitOk ? 'git' : 'fs';
+
+        const templates = new Set();
+        const partials = new Set();
+        const detail = {};
+
+        for (const storage of UNS_STORAGES) {
+            const storAbs = path.join(base, storage);
+            if (!fs.existsSync(storAbs)) { detail[storage] = { present: false }; continue; }
+
+            let tplNames, parNames;
+            if (gitOk) {
+                tplNames = await gitListDirs(toplevel, `${ref}:${prefix}${storage}`);
+                parNames = await gitListDirs(toplevel, `${ref}:${prefix}${storage}/_partials`);
+            } else {
+                tplNames = fsListDirs(storAbs) || [];
+                parNames = fsListDirs(path.join(storAbs, '_partials')) || [];
+            }
+
+            const tplClean = tplNames.filter(n => n !== '_partials');
+            tplClean.forEach(n => templates.add(n));
+            parNames.forEach(n => partials.add(n));
+            detail[storage] = { present: true, templates: tplClean.length, partials: parNames.length };
+        }
+
+        const tplArr = [...templates].sort();
+        const parArr = [...partials].sort();
+        const both = tplArr.filter(n => partials.has(n)).length;
+
+        return sendJson(200, {
+            ok: true,
+            root: rootParam,
+            base,
+            ref,
+            mode,
+            storages: detail,
+            templates: tplArr,
+            partials: parArr,
+            counts: { templates: tplArr.length, partials: parArr.length, both },
+            generatedAt: new Date().toISOString(),
+        });
+    } catch (e) {
+        return sendJson(500, { ok: false, error: e.message });
+    }
+}
 
 // ═══════════════════════════════════════
 //  Load HTML asset
@@ -71,6 +194,11 @@ const server = http.createServer((req, res) => {
     if (reqUrl.pathname === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ status: 'ok', app: 'JQL2Keys', uptime: process.uptime() }));
+    }
+
+    // ── UNS template/partial lister (reads the local UNS clone) ──
+    if (reqUrl.pathname === '/uns-templates') {
+        return handleUnsTemplates(reqUrl, res);
     }
 
     // ── Jira Proxy ──
