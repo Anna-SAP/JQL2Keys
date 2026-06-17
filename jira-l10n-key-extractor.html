@@ -924,6 +924,27 @@
                     </p>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
+                    <!-- Partial/template classification: sync names from the local UNS clone -->
+                    <div class="flex items-center gap-1">
+                        <button @click="syncUnsRepo" :disabled="unsRepoLoading"
+                            class="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                            :title="unsHasRepoData ? 'Re-read partials &amp; templates from the local UNS clone (master)' : 'Read partials &amp; templates from the local UNS clone so TIDs can be labelled'">
+                            <svg v-if="!unsRepoLoading" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            <svg v-else class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                            {{ unsRepoLoading ? 'Syncing…' : (unsHasRepoData ? 'Re-sync repo' : 'Sync from UNS repo') }}
+                        </button>
+                        <button @click="unsShowRepoConfig = !unsShowRepoConfig" type="button"
+                            class="p-1.5 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition"
+                            :class="unsShowRepoConfig ? 'ring-1 ring-indigo-400' : ''"
+                            title="UNS clone path, sync status & options">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                        </button>
+                        <span v-if="unsHasRepoData" class="text-[10px] text-gray-400 font-mono ml-0.5 hidden lg:inline"
+                            :title="`${unsRepoData.counts.templates} templates · ${unsRepoData.counts.partials} partials · synced ${unsRepoSyncedLabel}`">
+                            {{unsRepoData.counts.templates}}/{{unsRepoData.counts.partials}}
+                            <span class="text-gray-300">·</span> {{unsRepoData.mode === 'git' ? unsRepoData.ref : 'wt'}}
+                        </span>
+                    </div>
                     <button @click="unsShowBrandDict = !unsShowBrandDict"
                         class="flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200 transition">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
@@ -1034,6 +1055,75 @@
                 </div>
             </div>
 
+            <!-- Repo classification panel (collapsible): point at the local UNS clone -->
+            <div v-if="unsShowRepoConfig" class="px-6 py-4 bg-slate-50 border-b border-slate-200">
+                <div class="flex items-start justify-between flex-wrap gap-2 mb-3">
+                    <div>
+                        <div class="text-[11px] font-semibold text-slate-700 uppercase tracking-wider">Partial / template classification</div>
+                        <div class="text-[11px] text-slate-500 mt-0.5 max-w-2xl">
+                            Reads the <span class="font-semibold">local</span> UNS clone (no network) to label each TID as a
+                            <span class="text-indigo-700 font-medium">template</span>,
+                            <span class="text-orange-700 font-medium">partial</span>, or
+                            <span class="text-purple-700 font-medium">both</span>.
+                            Templates are top-level folders under <code class="font-mono text-[10px] bg-slate-200/60 px-1 rounded">templateStorage</code> /
+                            <code class="font-mono text-[10px] bg-slate-200/60 px-1 rounded">newTemplateStorage</code>; partials live in each storage's
+                            <code class="font-mono text-[10px] bg-slate-200/60 px-1 rounded">_partials</code>.
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                        <button @click="syncUnsRepo" :disabled="unsRepoLoading" type="button"
+                            class="text-[11px] px-2.5 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                            {{ unsRepoLoading ? 'Syncing…' : 'Sync now' }}
+                        </button>
+                        <button @click="clearUnsRepoData" :disabled="!unsHasRepoData" type="button"
+                            class="text-[11px] px-2 py-1 bg-white text-red-600 border border-red-200 rounded hover:bg-red-50 transition disabled:opacity-40 disabled:cursor-not-allowed">
+                            Clear
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex items-end gap-2 flex-wrap">
+                    <label class="flex-1 min-w-[260px]">
+                        <span class="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-0.5">UNS clone path (repo root or uns-app)</span>
+                        <input v-model="unsRepoRoot" type="text" spellcheck="false"
+                            placeholder="C:\Users\you\SW\UNS"
+                            @keydown.enter.prevent="syncUnsRepo"
+                            class="w-full px-2 py-1 text-[11px] border border-slate-300 rounded font-mono focus:ring-1 focus:ring-indigo-500 outline-none">
+                    </label>
+                    <label class="w-32">
+                        <span class="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-0.5">Branch / ref</span>
+                        <input v-model="unsRepoRef" type="text" spellcheck="false"
+                            placeholder="master"
+                            @keydown.enter.prevent="syncUnsRepo"
+                            class="w-full px-2 py-1 text-[11px] border border-slate-300 rounded font-mono focus:ring-1 focus:ring-indigo-500 outline-none">
+                    </label>
+                </div>
+
+                <!-- Error banner -->
+                <div v-if="unsRepoError" class="mt-2 px-2 py-1 bg-red-50 border border-red-200 rounded text-[11px] text-red-700 flex items-start gap-2">
+                    <svg class="w-3.5 h-3.5 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+                    <span class="flex-1">{{unsRepoError}}</span>
+                    <button @click="unsRepoError=''" class="text-red-400 hover:text-red-600 shrink-0">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+
+                <!-- Status -->
+                <div v-if="unsHasRepoData" class="mt-2 flex items-center gap-x-4 gap-y-1 flex-wrap text-[11px] text-slate-600">
+                    <span class="inline-flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                        Synced <span class="font-medium">{{unsRepoSyncedLabel}}</span>
+                    </span>
+                    <span>Source: <span class="font-mono font-medium">{{ unsRepoData.mode === 'git' ? (unsRepoData.ref + ' tree (git)') : 'working tree (fs)' }}</span></span>
+                    <span><span class="font-semibold text-indigo-700">{{unsRepoData.counts.templates}}</span> templates</span>
+                    <span><span class="font-semibold text-orange-700">{{unsRepoData.counts.partials}}</span> partials</span>
+                    <span v-if="unsRepoData.counts.both"><span class="font-semibold text-purple-700">{{unsRepoData.counts.both}}</span> both</span>
+                </div>
+                <div v-else class="mt-2 text-[11px] text-slate-500 italic">
+                    Not synced yet — click <span class="font-medium not-italic">Sync now</span> to label TIDs. Requires this page to be served by JQL2Keys (the local server reads the clone).
+                </div>
+            </div>
+
             <div class="px-6 py-5 space-y-4">
                 <!-- Input card -->
                 <div class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
@@ -1129,7 +1219,13 @@
                             <svg class="w-3.5 h-3.5 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/></svg>
                         </div>
                         <div class="text-3xl font-bold text-indigo-600 tabular-nums">{{unsStats.tids}}</div>
-                        <div class="text-[10px] text-gray-400 mt-0.5">unique TIDs</div>
+                        <div class="text-[10px] text-gray-400 mt-0.5">
+                            <template v-if="unsHasRepoData">
+                                <span class="text-indigo-600 font-medium">{{unsClassStats.template}}</span> tpl ·
+                                <span class="text-orange-600 font-medium">{{unsClassStats.partial}}</span> part<span v-if="unsClassStats.both"> · <span class="text-purple-600 font-medium">{{unsClassStats.both}}</span> both</span><span v-if="unsClassStats.unknown"> · {{unsClassStats.unknown}} ?</span>
+                            </template>
+                            <template v-else>unique TIDs</template>
+                        </div>
                     </div>
                     <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
                         <div class="flex items-center justify-between mb-1">
@@ -1214,6 +1310,7 @@
                         <div class="flex items-center gap-2">
                             <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
                             <span class="text-sm font-semibold text-gray-700">Template × Brand matrix</span>
+                            <span v-if="unsHasRepoData" class="text-[10px] text-gray-400">· grouped by partial / template</span>
                         </div>
                         <div class="flex items-center gap-2 text-[10px]">
                             <span class="inline-flex items-center gap-1">
@@ -1226,6 +1323,37 @@
                             </span>
                         </div>
                     </div>
+
+                    <!-- Classification sub-toolbar -->
+                    <div class="px-4 py-2 bg-white border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+                        <div v-if="unsHasRepoData" class="flex items-center gap-1.5 text-[10px] flex-wrap">
+                            <span class="text-gray-400 mr-0.5">Class</span>
+                            <button @click="unsClassFilter='all'"
+                                :class="unsClassFilter==='all' ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'"
+                                class="px-2 py-0.5 rounded border font-medium transition">All <span class="opacity-70">{{unsClassStats.totalTids}}</span></button>
+                            <button v-if="unsClassStats.template" @click="unsClassFilter = unsClassFilter==='template' ? 'all' : 'template'"
+                                :class="unsClassFilter==='template' ? 'ring-1 ring-offset-1 ring-indigo-400' : ''"
+                                class="px-2 py-0.5 rounded font-bold tracking-wider bg-indigo-100 text-indigo-700 border border-indigo-200 transition">TPL <span class="opacity-70">{{unsClassStats.template}}</span></button>
+                            <button v-if="unsClassStats.partial" @click="unsClassFilter = unsClassFilter==='partial' ? 'all' : 'partial'"
+                                :class="unsClassFilter==='partial' ? 'ring-1 ring-offset-1 ring-orange-400' : ''"
+                                class="px-2 py-0.5 rounded font-bold tracking-wider bg-orange-100 text-orange-700 border border-orange-200 transition">PART <span class="opacity-70">{{unsClassStats.partial}}</span></button>
+                            <button v-if="unsClassStats.both" @click="unsClassFilter = unsClassFilter==='both' ? 'all' : 'both'"
+                                :class="unsClassFilter==='both' ? 'ring-1 ring-offset-1 ring-purple-400' : ''"
+                                class="px-2 py-0.5 rounded font-bold tracking-wider bg-purple-100 text-purple-700 border border-purple-200 transition">BOTH <span class="opacity-70">{{unsClassStats.both}}</span></button>
+                            <button v-if="unsClassStats.unknown" @click="unsClassFilter = unsClassFilter==='unknown' ? 'all' : 'unknown'"
+                                :class="unsClassFilter==='unknown' ? 'ring-1 ring-offset-1 ring-gray-400' : ''"
+                                class="px-2 py-0.5 rounded font-medium bg-gray-100 text-gray-500 border border-gray-200 transition" title="TID not found in the repo on the synced ref">? <span class="opacity-70">{{unsClassStats.unknown}}</span></button>
+                        </div>
+                        <button v-else @click="syncUnsRepo" :disabled="unsRepoLoading" type="button"
+                            class="inline-flex items-center gap-1.5 text-[11px] text-indigo-700 bg-indigo-50 border border-indigo-200 rounded px-2 py-1 hover:bg-indigo-100 transition disabled:opacity-50">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            {{ unsRepoLoading ? 'Syncing…' : 'Sync from UNS repo to split partials vs templates' }}
+                        </button>
+                        <span v-if="unsHasRepoData" class="text-[10px] text-gray-400">
+                            from <span class="font-mono">{{ unsRepoData.mode === 'git' ? unsRepoData.ref : 'working tree' }}</span> · synced {{unsRepoSyncedLabel}}
+                        </span>
+                    </div>
+
                     <div class="overflow-x-auto">
                         <table class="uns-matrix w-full text-xs border-collapse">
                             <thead>
@@ -1238,21 +1366,38 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="tid in unsMatrixFiltered.tids" :key="tid">
-                                    <td class="px-3 py-1.5 font-mono text-[11px] text-gray-700 sticky left-0 bg-white z-10 align-middle">
-                                        <span :class="tid === unsSearch.trim() ? 'bg-yellow-100 px-1 rounded' : ''">{{tid}}</span>
-                                    </td>
-                                    <td v-for="b in unsMatrix.brands" :key="b" class="px-2 py-1.5 text-center align-middle">
-                                        <div class="flex items-center justify-center gap-0.5">
-                                            <span v-if="unsMatrix.data[tid] && unsMatrix.data[tid][b] && unsMatrix.data[tid][b].html"
-                                                class="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[9px] font-mono font-bold">HTML</span>
-                                            <span v-if="unsMatrix.data[tid] && unsMatrix.data[tid][b] && unsMatrix.data[tid][b].subject"
-                                                class="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-mono font-bold">SUBJ</span>
-                                            <span v-if="!unsMatrix.data[tid] || !unsMatrix.data[tid][b]" class="text-gray-300">·</span>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <tr v-if="unsMatrixFiltered.tids.length === 0">
+                                <template v-for="grp in unsMatrixGroups" :key="grp.cls">
+                                    <!-- Section header — one per classification group (skipped when unsynced) -->
+                                    <tr v-if="grp.cls !== 'unsynced'" class="border-t border-gray-200">
+                                        <td :colspan="unsMatrix.brands.length + 1" class="px-3 py-1.5 sticky left-0 z-10 bg-slate-50">
+                                            <span class="inline-flex items-center gap-1.5">
+                                                <span class="px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider" :class="grp.chip">{{grp.short}}</span>
+                                                <span class="text-[11px] font-semibold text-slate-600">{{grp.section}}</span>
+                                                <span class="text-[10px] text-slate-400 tabular-nums">{{grp.count}}</span>
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    <tr v-for="tid in grp.tids" :key="tid">
+                                        <td class="px-3 py-1.5 font-mono text-[11px] text-gray-700 sticky left-0 bg-white z-10 align-middle">
+                                            <div class="flex items-center gap-1.5">
+                                                <span v-if="grp.cls !== 'unsynced'"
+                                                    class="px-1 py-0.5 rounded text-[9px] font-bold leading-none shrink-0" :class="grp.chip"
+                                                    :title="grp.label">{{grp.short}}</span>
+                                                <span :class="tid === unsSearch.trim() ? 'bg-yellow-100 px-1 rounded' : ''">{{tid}}</span>
+                                            </div>
+                                        </td>
+                                        <td v-for="b in unsMatrix.brands" :key="b" class="px-2 py-1.5 text-center align-middle">
+                                            <div class="flex items-center justify-center gap-0.5">
+                                                <span v-if="unsMatrix.data[tid] && unsMatrix.data[tid][b] && unsMatrix.data[tid][b].html"
+                                                    class="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[9px] font-mono font-bold">HTML</span>
+                                                <span v-if="unsMatrix.data[tid] && unsMatrix.data[tid][b] && unsMatrix.data[tid][b].subject"
+                                                    class="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-mono font-bold">SUBJ</span>
+                                                <span v-if="!unsMatrix.data[tid] || !unsMatrix.data[tid][b]" class="text-gray-300">·</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </template>
+                                <tr v-if="unsMatrixRowCount === 0">
                                     <td :colspan="unsMatrix.brands.length + 1" class="px-3 py-8 text-center text-xs text-gray-400">
                                         No templates match the current filters.
                                     </td>
@@ -1269,6 +1414,10 @@
                         <div class="px-4 py-2 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between flex-wrap gap-2">
                             <div class="flex items-center gap-2 min-w-0">
                                 <span class="font-mono text-sm font-semibold text-indigo-800 truncate">{{grp.tid}}</span>
+                                <span v-if="unsHasRepoData"
+                                    class="px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider shrink-0"
+                                    :class="classMeta(classifyTid(grp.tid)).chip"
+                                    :title="classMeta(classifyTid(grp.tid)).label">{{classMeta(classifyTid(grp.tid)).short}}</span>
                                 <span class="text-[10px] text-indigo-500 shrink-0">
                                     {{grp.brandCount}} brand{{grp.brandCount === 1 ? '' : 's'}} ·
                                     {{grp.htmlCount}} html · {{grp.subjectCount}} subject
@@ -1891,6 +2040,32 @@ createApp({
         const unsBrandImportInput = ref(null); // file <input ref> for Import JSON
         const unsBrandError  = ref('');
 
+        // ─── UNS repo classification state ───────
+        // The local Node server reads the local UNS clone (no network) and
+        // returns the names of every template (top-level folders under
+        // templateStorage / newTemplateStorage) and every partial (folders under
+        // each storage's _partials). With those two sets we can label each
+        // extracted TID as a template, a partial, both, or unknown. The fetch is
+        // manual ("Sync from repo") and the result is cached in localStorage so
+        // the labels survive reloads until the user re-syncs.
+        const UNS_DEFAULT_REPO_ROOT = 'C:\\Users\\susu82\\SW\\UNS';
+        function loadUnsRepoData() {
+            try {
+                const raw = localStorage.getItem('uns_repoData');
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                if (parsed && Array.isArray(parsed.templates) && Array.isArray(parsed.partials)) return parsed;
+            } catch {}
+            return null;
+        }
+        const unsRepoRoot      = ref(localStorage.getItem('uns_repoRoot') || UNS_DEFAULT_REPO_ROOT);
+        const unsRepoRef       = ref(localStorage.getItem('uns_repoRef') || 'master');
+        const unsRepoData      = ref(loadUnsRepoData());        // { templates, partials, ref, mode, counts, root, generatedAt } | null
+        const unsRepoLoading   = ref(false);
+        const unsRepoError     = ref('');
+        const unsShowRepoConfig = ref(false);
+        const unsClassFilter   = ref('all'); // 'all' | 'template' | 'partial' | 'both' | 'unknown'
+
         // ─── UTM Analysis state ──────────────────
         const utmUrlInput = ref(localStorage.getItem('uns_utmUrlInput') || '');
 
@@ -2077,7 +2252,7 @@ createApp({
         // ═══════════════════════════════════════
         //  UNS — App-level computeds
         // ═══════════════════════════════════════
-        const appVersion = '1.7.2';
+        const appVersion = '1.8.0';
         const appHostLabel = computed(() => {
             if (typeof location === 'undefined' || !location.host) return 'standalone';
             return location.host;
@@ -2525,6 +2700,137 @@ createApp({
             return { ...all, tids: visibleTids };
         });
 
+        // ═══════════════════════════════════════
+        //  UNS — Partial vs Template classification
+        // ═══════════════════════════════════════
+        // Built from the names synced out of the local UNS clone. Templates are
+        // top-level folders under templateStorage / newTemplateStorage; partials
+        // live under each storage's _partials. A name can be both (it exists as a
+        // standalone template *and* as a reusable fragment).
+        const unsRepoSets = computed(() => {
+            const d = unsRepoData.value;
+            if (!d) return null;
+            return { templates: new Set(d.templates || []), partials: new Set(d.partials || []) };
+        });
+        const unsHasRepoData = computed(() => !!unsRepoData.value);
+
+        // 'template' | 'partial' | 'both' | 'unknown' (synced) · 'unsynced' (no data)
+        function classifyTid(tid) {
+            const sets = unsRepoSets.value;
+            if (!sets) return 'unsynced';
+            const t = sets.templates.has(tid);
+            const p = sets.partials.has(tid);
+            if (t && p) return 'both';
+            if (t) return 'template';
+            if (p) return 'partial';
+            return 'unknown';
+        }
+
+        // Chip label + Tailwind classes + section heading per class.
+        const UNS_CLASS_META = {
+            template: { label: 'Template',          short: 'TPL',  chip: 'bg-indigo-100 text-indigo-700 border border-indigo-200', section: 'Templates' },
+            partial:  { label: 'Partial',           short: 'PART', chip: 'bg-orange-100 text-orange-700 border border-orange-200', section: 'Partials' },
+            both:     { label: 'Template + Partial', short: 'BOTH', chip: 'bg-purple-100 text-purple-700 border border-purple-200', section: 'Template + Partial' },
+            unknown:  { label: 'Not in repo',       short: '?',    chip: 'bg-gray-100 text-gray-500 border border-gray-200',       section: 'Not found in repo' },
+            unsynced: { label: 'Unsynced',          short: '—',    chip: 'bg-gray-50 text-gray-400 border border-dashed border-gray-300', section: 'Not classified yet' },
+        };
+        function classMeta(cls) { return UNS_CLASS_META[cls] || UNS_CLASS_META.unsynced; }
+
+        // Counts per class across all parsed TIDs — drives the summary chips.
+        const unsClassStats = computed(() => {
+            const out = { template: 0, partial: 0, both: 0, unknown: 0, unsynced: 0, totalTids: 0 };
+            const tids = new Set(unsParsed.value.parsed.map(i => i.tid));
+            out.totalTids = tids.size;
+            for (const tid of tids) out[classifyTid(tid)]++;
+            return out;
+        });
+
+        function unsClassMatches(tid) {
+            if (unsClassFilter.value === 'all') return true;
+            return classifyTid(tid) === unsClassFilter.value;
+        }
+
+        // Matrix rows grouped into labelled sections by classification, in a
+        // stable order (templates → partials → both → unknown). When the repo
+        // isn't synced everything falls into a single 'unsynced' bucket.
+        const UNS_CLASS_ORDER = ['template', 'partial', 'both', 'unknown', 'unsynced'];
+        const unsMatrixGroups = computed(() => {
+            const tids = unsMatrixFiltered.value.tids.filter(unsClassMatches);
+            const buckets = {};
+            for (const tid of tids) {
+                const cls = classifyTid(tid);
+                (buckets[cls] = buckets[cls] || []).push(tid);
+            }
+            const groups = [];
+            for (const cls of UNS_CLASS_ORDER) {
+                const list = buckets[cls];
+                if (list && list.length) groups.push({ cls, ...classMeta(cls), tids: list, count: list.length });
+            }
+            return groups;
+        });
+        const unsMatrixRowCount = computed(() => unsMatrixGroups.value.reduce((n, g) => n + g.count, 0));
+
+        // Human-friendly timestamp for the last successful sync.
+        const unsRepoSyncedLabel = computed(() => {
+            const d = unsRepoData.value;
+            if (!d || !d.generatedAt) return '';
+            const t = new Date(d.generatedAt);
+            return isNaN(t) ? '' : t.toLocaleString();
+        });
+
+        // Manual sync: pull the latest names from the LOCAL UNS clone through the
+        // bundled server endpoint (no network — the server reads the clone, by
+        // default the master tree via git, falling back to the working tree).
+        async function syncUnsRepo() {
+            if (unsRepoLoading.value) return;
+            unsRepoLoading.value = true;
+            unsRepoError.value = '';
+            try {
+                const root = (unsRepoRoot.value || '').trim();
+                const ref = (unsRepoRef.value || 'master').trim() || 'master';
+                if (!root) throw new Error('Set the local UNS clone path first');
+                const apiBase = (config.proxyUrl || location.origin || '').replace(/\/+$/, '');
+                const url = `${apiBase}/uns-templates?root=${encodeURIComponent(root)}&ref=${encodeURIComponent(ref)}`;
+                const resp = await fetch(url);
+                let data;
+                try { data = await resp.json(); }
+                catch { throw new Error(`Unexpected response (HTTP ${resp.status}). Is JQL2Keys serving this page?`); }
+                if (!resp.ok || !data.ok) throw new Error(data && data.error ? data.error : `HTTP ${resp.status}`);
+                const payload = {
+                    templates: data.templates || [],
+                    partials: data.partials || [],
+                    ref: data.ref || ref,
+                    mode: data.mode || '',
+                    root: data.root || root,
+                    base: data.base || '',
+                    counts: data.counts || {
+                        templates: (data.templates || []).length,
+                        partials: (data.partials || []).length,
+                        both: 0,
+                    },
+                    generatedAt: data.generatedAt || new Date().toISOString(),
+                };
+                unsRepoData.value = payload;
+                try { localStorage.setItem('uns_repoData', JSON.stringify(payload)); } catch {}
+                showToast(`Synced ${payload.counts.templates} templates · ${payload.counts.partials} partials`
+                    + ` (${payload.mode === 'git' ? payload.ref : 'working tree'})`);
+            } catch (e) {
+                unsRepoError.value = e.message || String(e);
+                showToast('Repo sync failed');
+            } finally {
+                unsRepoLoading.value = false;
+            }
+        }
+
+        function clearUnsRepoData() {
+            unsRepoData.value = null;
+            try { localStorage.removeItem('uns_repoData'); } catch {}
+            showToast('Cleared partial/template classification');
+        }
+
+        watch(unsRepoRoot, (v) => { try { localStorage.setItem('uns_repoRoot', v || ''); } catch {} });
+        watch(unsRepoRef,  (v) => { try { localStorage.setItem('uns_repoRef', v || 'master'); } catch {} });
+
         // Raw JSON export structure — also drives the "Raw" view tab.
         const unsRawJson = computed(() => {
             return JSON.stringify(buildUnsExport(), null, 2);
@@ -2548,6 +2854,11 @@ createApp({
                 else if (i.kind === 'email_subject') slot.hasSubject = true;
                 if (i.locale && !slot.locales.includes(i.locale)) slot.locales.push(i.locale);
             }
+            // Per-TID partial/template classification from the synced repo data.
+            const classifications = {};
+            for (const tid of Object.keys(byTemplate)) classifications[tid] = classifyTid(tid);
+            const cs = unsClassStats.value;
+            const repoMeta = unsRepoData.value;
             return {
                 generated: new Date().toISOString(),
                 summary: {
@@ -2560,13 +2871,31 @@ createApp({
                     emailSubject: unsStats.value.subject,
                     other: unsStats.value.other,
                     unmappedBrands: unsStats.value.unknownBrandList,
+                    classification: {
+                        template: cs.template,
+                        partial: cs.partial,
+                        both: cs.both,
+                        unknown: cs.unknown,
+                        unsynced: cs.unsynced,
+                    },
                 },
+                repo: repoMeta ? {
+                    synced: true,
+                    root: repoMeta.root,
+                    ref: repoMeta.ref,
+                    mode: repoMeta.mode,
+                    templateCount: repoMeta.counts ? repoMeta.counts.templates : (repoMeta.templates || []).length,
+                    partialCount: repoMeta.counts ? repoMeta.counts.partials : (repoMeta.partials || []).length,
+                    syncedAt: repoMeta.generatedAt,
+                } : { synced: false },
+                classifications,
                 templates: byTemplate,
                 brandDictionary: { ...unsBrandDict.value },
                 raw: items.map(i => ({
                     namespace: i.namespace,
                     hash: i.hash,
                     tid: i.tid,
+                    classification: classifyTid(i.tid),
                     kind: i.kind,
                     brandId: i.brandId,
                     brandName: unsBrandName(i.brandId) || null,
@@ -3760,6 +4089,11 @@ createApp({
             unsRawJson, unsBrandName, unsBrandDictEntries,
             unsBrandDict, unsNewBrandId, unsNewBrandName, unsBrandError,
             unsUnmappedBrands, unsBrandImportInput,
+            // UNS partial/template classification
+            unsRepoRoot, unsRepoRef, unsRepoData, unsRepoLoading, unsRepoError,
+            unsShowRepoConfig, unsClassFilter, unsHasRepoData,
+            unsClassStats, unsMatrixGroups, unsMatrixRowCount, unsRepoSyncedLabel,
+            classifyTid, classMeta, syncUnsRepo, clearUnsRepoData,
             addBrandEntry, updateBrandEntry, deleteBrandEntry,
             clearBrandDict, resetBrandDict, exportBrandDict, openBrandImport, handleBrandImport,
             importUnmappedBrands,
