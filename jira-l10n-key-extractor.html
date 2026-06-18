@@ -32,6 +32,9 @@
     .uns-matrix th, .uns-matrix td { border: 1px solid #f1f5f9; }
     .uns-matrix tbody tr:hover { background: #fafafa; }
     .uns-matrix th.brand-col { writing-mode: horizontal-tb; }
+    /* Bug Fixing Helper metadata matrix */
+    .bug-matrix thead th { border-bottom: 1px solid #e5e7eb; }
+    .bug-matrix tbody tr:hover { background: #f0fdfa; }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen text-gray-800">
@@ -55,6 +58,9 @@
             </span>
             <span v-if="activeTool==='key-metadata' && unsStats.total" class="text-xs bg-white/20 px-2 py-1 rounded">
                 {{unsStats.total}} keys &middot; {{unsStats.tids}} TIDs &middot; {{unsStats.brands}} brands
+            </span>
+            <span v-if="activeTool==='bug-helper' && bugStats.units" class="text-xs bg-white/20 px-2 py-1 rounded">
+                {{bugStats.units}} units &middot; {{bugStats.sourceRecords}} sources &middot; {{bugStats.locales}} langs
             </span>
             <a v-if="config.domain" :href="jiraDomainUrl()" target="_blank" rel="noopener"
                 :class="['hidden md:inline-flex items-center gap-1 text-[11px] hover:text-white hover:underline', headerBranding.tagClass]">
@@ -160,6 +166,24 @@
                             <span class="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-bold tracking-wider">SOON</span>
                         </div>
                         <div class="text-[10px] text-gray-400 truncate">Compare hbs across builds / langs</div>
+                    </div>
+                </button>
+            </div>
+
+            <!-- DAILY WORK section -->
+            <div class="px-3 py-3 border-t border-gray-100">
+                <div class="px-2 text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-2">Daily Work</div>
+                <button @click="selectTool('bug-helper')"
+                    :class="['tool-nav-btn relative w-full text-left rounded-md flex items-start gap-2 px-3 py-2',
+                            activeTool==='bug-helper' ? 'active' : '']">
+                    <svg class="w-4 h-4 mt-0.5 shrink-0" :class="activeTool==='bug-helper' ? 'text-teal-600' : 'text-gray-500'"
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z"/></svg>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="text-sm font-medium text-gray-800 tool-nav-title">Bug Fixing Helper</span>
+                            <span class="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold tracking-wider">NEW</span>
+                        </div>
+                        <div class="text-[10px] text-gray-500 truncate">Distil source metadata from translation dumps</div>
                     </div>
                 </button>
             </div>
@@ -1754,6 +1778,284 @@
         </template>
 
         <!-- ═══════════════════════════════════════ -->
+        <!-- ─── DAILY WORK — Bug Fixing Helper ─── -->
+        <!-- ═══════════════════════════════════════ -->
+        <template v-if="activeTool === 'bug-helper'">
+        <main class="flex-1 flex flex-col overflow-y-auto bg-gray-50">
+            <!-- Tool header -->
+            <div class="px-6 py-5 bg-white border-b border-gray-200 flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0">
+                    <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2 flex-wrap">
+                        Bug Fixing Helper
+                        <span class="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold tracking-wider">NEW</span>
+                    </h2>
+                    <p class="text-xs text-gray-500 mt-1 max-w-3xl">
+                        Paste a filtered translation dump (the long JSON you get when isolating a key from the full
+                        translation library). The helper strips away the locale text and distils the
+                        <span class="text-teal-700 font-semibold">provenance metadata</span> —
+                        <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">source</code>,
+                        <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">task_id</code>,
+                        <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">merge_request_iid</code>,
+                        <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">release</code>,
+                        <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">base_ref</code> /
+                        <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">head_ref</code> —
+                        into a scannable <span class="text-teal-700 font-semibold">matrix</span>, and keeps the
+                        <span class="text-teal-700 font-semibold">translations</span> in a separate zone for review.
+                    </p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    <button @click="copyBugMetaCsv" type="button" :disabled="!bugStats.sourceRecords"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition disabled:opacity-40 disabled:cursor-not-allowed">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        Copy metadata CSV
+                    </button>
+                    <button @click="exportBugMetaJson" type="button" :disabled="!bugStats.sourceRecords"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-teal-600 text-white hover:bg-teal-700 transition disabled:opacity-40 disabled:cursor-not-allowed">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                        Export JSON
+                    </button>
+                </div>
+            </div>
+
+            <div class="px-6 py-5 space-y-4">
+                <!-- Input card -->
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                    <div class="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+                        <div class="flex items-center gap-2">
+                            <svg class="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            <div>
+                                <div class="text-sm font-semibold text-gray-800">Paste filtered translation JSON</div>
+                                <div class="text-[11px] text-gray-500">A JSON array (or single object) of translation units — auto-parses as you type</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <button @click="loadBugSample" type="button"
+                                class="text-[11px] text-teal-600 hover:text-teal-800 hover:underline">Load sample</button>
+                            <button @click="bugInput = ''" type="button" :disabled="!bugInput"
+                                class="text-[11px] text-gray-500 hover:text-gray-700 hover:underline disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline">Clear</button>
+                        </div>
+                    </div>
+                    <div class="p-4">
+                        <textarea v-model="bugInput" rows="6" spellcheck="false"
+                            placeholder='[&#10;  {&#10;    "key": "RingCentral.pushToTalk.…BULK_ADD_CHANNELS.MEMBER_NO_PTT_LICENSE",&#10;    "source": "MergedTranslations_CORE_20260618.json",&#10;    "_source": { "source": "Scan", "task_id": "…", "base_ref": "release_26-1", "head_ref": "26-3_L10n" },&#10;    "en-US": "Member does not have a Push to Talk license assigned.",&#10;    "_all_sources": [ … ]&#10;  }&#10;]'
+                            class="w-full px-3 py-2 text-xs border border-gray-300 rounded-md font-mono leading-relaxed resize-y outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"></textarea>
+                        <div class="mt-2 text-[11px] text-gray-500">
+                            <template v-if="bugUnits.length">
+                                <span class="font-semibold text-gray-700">{{bugUnits.length}}</span>
+                                translation unit{{bugUnits.length === 1 ? '' : 's'}} recognised
+                                <span class="text-gray-400">·</span>
+                                <span class="font-semibold text-gray-700">{{bugStats.sourceRecords}}</span>
+                                source record{{bugStats.sourceRecords === 1 ? '' : 's'}}
+                                <span v-if="bugStats.withoutMeta" class="text-amber-600 ml-1">· {{bugStats.withoutMeta}} unit{{bugStats.withoutMeta === 1 ? '' : 's'}} without provenance</span>
+                            </template>
+                            <template v-else-if="bugParseError">
+                                <span class="text-red-600">{{bugParseError}}</span>
+                            </template>
+                            <template v-else-if="bugInput.trim()">
+                                <span class="text-amber-600">No translation units found yet — paste a JSON array of objects</span>
+                            </template>
+                            <template v-else>
+                                <span class="text-gray-400">Paste your filtered JSON above to begin</span>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Empty state -->
+                <div v-if="!bugUnits.length" class="bg-white border border-gray-200 rounded-lg p-10 text-center text-gray-400">
+                    <svg class="w-14 h-14 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63"/></svg>
+                    <p class="text-sm text-gray-500 font-medium">Paste a filtered translation dump above</p>
+                    <p class="text-xs mt-1">The helper reads <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">_source</code> / <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">_all_sources</code> nodes and ignores the locale text.</p>
+                </div>
+
+                <template v-else>
+                    <!-- Stat cards -->
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                        <div class="bg-white border border-gray-200 rounded-lg p-3">
+                            <div class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Units</div>
+                            <div class="text-2xl font-bold text-gray-800 tabular-nums">{{bugStats.units}}</div>
+                            <div class="text-[10px] text-gray-400">{{bugStats.keys}} unique key{{bugStats.keys === 1 ? '' : 's'}}</div>
+                        </div>
+                        <div class="bg-white border border-gray-200 rounded-lg p-3">
+                            <div class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Source records</div>
+                            <div class="text-2xl font-bold text-teal-700 tabular-nums">{{bugStats.sourceRecords}}</div>
+                            <div class="text-[10px] text-gray-400">across all units</div>
+                        </div>
+                        <div class="bg-white border border-gray-200 rounded-lg p-3">
+                            <div class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Tasks</div>
+                            <div class="text-2xl font-bold text-gray-800 tabular-nums">{{bugStats.tasks}}</div>
+                            <div class="text-[10px] text-gray-400">unique task_id</div>
+                        </div>
+                        <div class="bg-white border border-gray-200 rounded-lg p-3">
+                            <div class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Merge requests</div>
+                            <div class="text-2xl font-bold text-gray-800 tabular-nums">{{bugStats.mrs}}</div>
+                            <div class="text-[10px] text-gray-400">distinct MR iids</div>
+                        </div>
+                        <div class="bg-white border border-gray-200 rounded-lg p-3">
+                            <div class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Locales</div>
+                            <div class="text-2xl font-bold text-gray-800 tabular-nums">{{bugStats.locales}}</div>
+                            <div class="text-[10px] text-gray-400">in translations</div>
+                        </div>
+                    </div>
+
+                    <!-- Zone toggle + filter -->
+                    <div class="flex items-center justify-between gap-3 flex-wrap">
+                        <div class="inline-flex rounded-md border border-gray-300 overflow-hidden bg-white">
+                            <button @click="bugView = 'meta'" type="button"
+                                :class="bugView === 'meta' ? 'bg-teal-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'"
+                                class="px-3 py-1.5 text-xs font-medium transition flex items-center gap-1.5">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+                                元数据 Metadata
+                            </button>
+                            <button @click="bugView = 'trans'" type="button"
+                                :class="bugView === 'trans' ? 'bg-teal-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'"
+                                class="px-3 py-1.5 text-xs font-medium transition border-l border-gray-300 flex items-center gap-1.5">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/></svg>
+                                翻译 Translations
+                            </button>
+                        </div>
+                        <div class="relative flex-1 min-w-[200px] max-w-xs">
+                            <svg class="w-4 h-4 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                            <input v-model="bugFilter" type="text" placeholder="filter key, task, source, release…"
+                                class="w-full pl-8 pr-2 py-1.5 text-xs border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent">
+                        </div>
+                    </div>
+
+                    <!-- ── METADATA ZONE ── -->
+                    <div v-show="bugView === 'meta'" class="space-y-3">
+                        <div v-if="!bugMetaGroups.length" class="bg-white border border-gray-200 rounded-lg p-8 text-center text-sm text-gray-400">
+                            <template v-if="bugFilter.trim()">No units match “{{bugFilter}}”.</template>
+                            <template v-else>None of the pasted units carry <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">_source</code> / <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">_all_sources</code> provenance — try the Translations zone.</template>
+                        </div>
+                        <div v-for="grp in bugMetaGroups" :key="grp.key" class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                            <!-- Key header -->
+                            <div class="px-4 py-2.5 bg-gray-50 border-b border-gray-100 flex items-start justify-between gap-2 flex-wrap">
+                                <div class="min-w-0 flex-1">
+                                    <button @click="copyText(grp.key)"
+                                        class="font-mono text-[11px] text-gray-700 hover:text-teal-700 text-left break-all leading-snug"
+                                        :title="'Copy key — ' + grp.key">{{grp.key}}</button>
+                                    <div class="flex items-center gap-2 mt-1 flex-wrap">
+                                        <span v-if="grp.leaf" class="text-[10px] font-semibold text-gray-500">{{grp.leaf}}</span>
+                                        <span v-if="grp.sourceFile" class="text-[10px] text-gray-400 font-mono">{{grp.sourceFile}}</span>
+                                        <span v-if="grp.inconsistencies && grp.inconsistencies !== 'no'"
+                                            class="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">inconsistent</span>
+                                    </div>
+                                </div>
+                                <span class="text-[10px] text-gray-400 tabular-nums shrink-0 pt-0.5">{{grp.rows.length}} source{{grp.rows.length === 1 ? '' : 's'}}</span>
+                            </div>
+                            <!-- Metadata matrix -->
+                            <div class="overflow-x-auto">
+                                <table class="bug-matrix w-full text-xs border-collapse">
+                                    <thead>
+                                        <tr class="bg-gray-50 text-[10px] uppercase tracking-wider text-gray-500">
+                                            <th class="text-left font-semibold px-3 py-2">Source</th>
+                                            <th class="text-left font-semibold px-3 py-2">Task</th>
+                                            <th class="text-left font-semibold px-3 py-2">MR / Release</th>
+                                            <th class="text-left font-semibold px-3 py-2">Project / Refs</th>
+                                            <th class="text-left font-semibold px-3 py-2 whitespace-nowrap">Created · Locales</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-100">
+                                        <tr v-for="(r, ri) in grp.rows" :key="ri" class="align-top">
+                                            <td class="px-3 py-2">
+                                                <span :class="['px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase', bugSourceBadgeClass(r.source)]">{{r.source || '—'}}</span>
+                                            </td>
+                                            <td class="px-3 py-2">
+                                                <div v-if="r.task_name" class="text-gray-700 leading-snug max-w-[20rem]">{{r.task_name}}</div>
+                                                <button v-if="r.task_id" @click="copyText(r.task_id)"
+                                                    class="font-mono text-[10px] text-gray-400 hover:text-teal-700 break-all text-left mt-0.5"
+                                                    :title="'Copy task_id — ' + r.task_id">{{r.task_id}}</button>
+                                                <span v-if="!r.task_name && !r.task_id" class="text-gray-300">—</span>
+                                            </td>
+                                            <td class="px-3 py-2 whitespace-nowrap">
+                                                <button v-if="r.merge_request_iid != null" @click="copyText(String(r.merge_request_iid))"
+                                                    class="font-mono text-[11px] text-emerald-700 hover:underline"
+                                                    :title="'Copy MR iid'">MR#{{r.merge_request_iid}}</button>
+                                                <div v-if="r.release" class="text-[10px] text-gray-500 mt-0.5">{{r.release}}</div>
+                                                <span v-if="r.merge_request_iid == null && !r.release" class="text-gray-300">—</span>
+                                            </td>
+                                            <td class="px-3 py-2">
+                                                <button v-if="r.project_id" @click="copyText(r.project_id)"
+                                                    class="font-mono text-[10px] text-gray-600 hover:text-teal-700 break-all text-left"
+                                                    :title="'Copy project_id'">{{r.project_id}}</button>
+                                                <div v-if="r.base_ref || r.head_ref" class="flex items-center gap-1 text-[10px] font-mono text-gray-500 mt-0.5">
+                                                    <span class="text-gray-700">{{r.base_ref || '?'}}</span>
+                                                    <svg class="w-2.5 h-2.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                                                    <span class="text-gray-700">{{r.head_ref || '?'}}</span>
+                                                </div>
+                                                <span v-if="!r.project_id && !r.base_ref && !r.head_ref" class="text-gray-300">—</span>
+                                            </td>
+                                            <td class="px-3 py-2 whitespace-nowrap">
+                                                <div class="text-gray-600" :title="r.created_at || ''">{{fmtBugDate(r.created_at) || '—'}}</div>
+                                                <div v-if="r.wonLocales != null" class="text-[10px] text-gray-400 mt-0.5"
+                                                    :title="r.wonLocalesList">{{r.wonLocales}} won-locale{{r.wonLocales === 1 ? '' : 's'}}</div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ── TRANSLATION ZONE ── -->
+                    <div v-show="bugView === 'trans'" class="space-y-3">
+                        <div v-if="!bugTransCards.length" class="bg-white border border-gray-200 rounded-lg p-8 text-center text-sm text-gray-400">
+                            <template v-if="bugFilter.trim()">No units match “{{bugFilter}}”.</template>
+                            <template v-else>No locale text found in the pasted units.</template>
+                        </div>
+                        <div v-for="card in bugTransCards" :key="card.key" class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                            <div class="px-4 py-2.5 bg-gray-50 border-b border-gray-100 flex items-start justify-between gap-2 flex-wrap">
+                                <div class="min-w-0 flex-1">
+                                    <button @click="copyText(card.key)"
+                                        class="font-mono text-[11px] text-gray-700 hover:text-teal-700 text-left break-all leading-snug"
+                                        :title="'Copy key — ' + card.key">{{card.key}}</button>
+                                    <div class="flex items-center gap-2 mt-1 flex-wrap">
+                                        <span v-if="card.leaf" class="text-[10px] font-semibold text-gray-500">{{card.leaf}}</span>
+                                        <span class="text-[10px] text-gray-400 tabular-nums">{{card.locales.length}} locale{{card.locales.length === 1 ? '' : 's'}}</span>
+                                        <span v-if="card.divergedCount" class="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider"
+                                            :title="card.divergedCount + ' locale(s) differ across sources'">{{card.divergedCount}} diverge</span>
+                                    </div>
+                                </div>
+                                <button @click="copyText(card.json)" type="button"
+                                    class="text-[10px] text-gray-500 hover:text-teal-700 hover:underline shrink-0 pt-0.5">Copy JSON</button>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="bug-matrix w-full text-xs border-collapse">
+                                    <tbody class="divide-y divide-gray-100">
+                                        <template v-for="row in card.rows" :key="row.locale">
+                                            <tr class="align-top" :class="row.diverged ? 'bg-amber-50/40' : ''">
+                                                <td class="px-3 py-2 w-24 align-top">
+                                                    <span class="font-mono text-[11px] text-teal-700 font-semibold">{{row.locale}}</span>
+                                                    <button v-if="row.diverged" @click="toggleBugDiff(card.key, row.locale)"
+                                                        class="block mt-1 text-[9px] text-amber-700 hover:underline"
+                                                        :title="'Show ' + row.variants.length + ' source variants'">
+                                                        ⚠ {{bugDiffOpen(card.key, row.locale) ? 'hide' : 'compare'}}
+                                                    </button>
+                                                </td>
+                                                <td class="px-3 py-2">
+                                                    <button @click="copyText(row.text)"
+                                                        class="text-left text-gray-700 leading-snug hover:text-teal-700 w-full"
+                                                        :title="'Click to copy'">{{row.text}}</button>
+                                                    <div v-if="row.diverged && bugDiffOpen(card.key, row.locale)" class="mt-2 space-y-1.5 border-l-2 border-amber-200 pl-2">
+                                                        <div v-for="(vv, vi) in row.variants" :key="vi" class="text-[11px]">
+                                                            <span :class="['px-1 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider mr-1', bugSourceBadgeClass(vv.source)]">{{vv.label}}</span>
+                                                            <span class="text-gray-600">{{vv.text}}</span>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </main>
+        </template>
+
+        <!-- ═══════════════════════════════════════ -->
         <!-- ─── COMING SOON TOOL VIEWS ─── -->
         <!-- ═══════════════════════════════════════ -->
         <template v-if="activeTool === 'brand-coverage' || activeTool === 'template-diff'">
@@ -2069,6 +2371,73 @@ createApp({
         // ─── UTM Analysis state ──────────────────
         const utmUrlInput = ref(localStorage.getItem('uns_utmUrlInput') || '');
 
+        // ─── Bug Fixing Helper state ─────────────
+        const bugInput   = ref(localStorage.getItem('uns_bugInput') || '');
+        const bugView    = ref(localStorage.getItem('uns_bugView') || 'meta'); // 'meta' | 'trans'
+        const bugFilter  = ref('');
+        const bugDiffExpanded = ref(new Set()); // `${key} ${locale}` entries with the source-diff panel open
+
+        // A representative slice of a "filtered translation dump": one rich unit
+        // carrying _source + multi-entry _all_sources (Scan + two MRs), and one
+        // bare unit with only an en-US string and no provenance.
+        const BUG_SAMPLE = JSON.stringify([
+            {
+                key: 'RingCentral.pushToTalk.9002feaf0369ab13334a33ebbc916fcc.app.common.SERVER_API_ERRORS.BULK_ADD_CHANNELS.MEMBER_NO_PTT_LICENSE',
+                source: 'MergedTranslations_CORE_20260618.json',
+                _source: {
+                    source: 'Scan', task_id: 'd4baae53-d0fb-4076-915a-967feaaa6f04',
+                    task_name: 'push-to-talk scan retry', project_id: 'web/push-to-talk',
+                    base_ref: 'release_26-1', head_ref: '26-3_L10n',
+                    created_at: '2026-06-15T09:38:04.521246',
+                },
+                'en-US': 'Member does not have a Push to Talk license assigned. Please assign a license and try again.',
+                'de-DE': 'Dem Mitglied ist keine Push-to-Talk-Lizenz zugewiesen. Bitte weisen Sie eine Lizenz zu und versuchen Sie es erneut.',
+                'fr-CA': 'Ce membre n’a pas de licence Push to Talk attribuée. Veuillez attribuer une licence, puis réessayer.',
+                'zh-CN': '该成员尚未分配有 Push to Talk 许可。请先为其分配许可，然后重试。',
+                inconsistencies_in_new: 'no',
+                _all_sources: [
+                    {
+                        source: 'Scan', task_id: 'd4baae53-d0fb-4076-915a-967feaaa6f04',
+                        task_name: 'push-to-talk scan retry', created_at: '2026-06-15T09:38:04.521246',
+                        won_locales: ['de-DE', 'en-US', 'fr-CA', 'zh-CN'],
+                        translations: {
+                            'en-US': 'Member does not have a Push to Talk license assigned. Please assign a license and try again.',
+                            'de-DE': 'Dem Mitglied ist keine Push-to-Talk-Lizenz zugewiesen. Bitte weisen Sie eine Lizenz zu und versuchen Sie es erneut.',
+                            'fr-CA': 'Ce membre n’a pas de licence Push to Talk attribuée. Veuillez attribuer une licence, puis réessayer.',
+                            'zh-CN': '该成员尚未分配有 Push to Talk 许可。请先为其分配许可，然后重试。',
+                        },
+                    },
+                    {
+                        source: 'MR', task_id: 'd3e28b06-8725-4a37-a937-950b983ad349',
+                        task_name: 'MR#479 web/push-to-talk', merge_request_iid: 479, release: 'Release 26.3',
+                        created_at: '2026-06-10T07:16:11.636400',
+                        translations: {
+                            'en-US': 'Member does not have a Push to Talk license assigned. Please assign a license and try again.',
+                            'de-DE': 'Dem Mitglied ist keine Push-to-Talk-Lizenz zugewiesen. Bitte weisen Sie eine Lizenz zu und versuchen Sie es erneut.',
+                            'fr-CA': 'Ce membre ne dispose pas d’une licence Push to Talk attribuée. Veuillez attribuer une licence, puis réessayer.',
+                            'zh-CN': '该成员尚未分配有 Push to Talk 许可。请先为其分配许可，然后重试。',
+                        },
+                    },
+                    {
+                        source: 'Legacy', task_id: '261',
+                        task_name: 'LOC-24768 Web 26.3 Localization - Drop 1 Export [Task-1167, 6/2]',
+                        created_at: '2026-06-02T02:21:22.456952',
+                        won_locales: ['de-DE', 'en-US', 'zh-CN'],
+                        translations: {
+                            'en-US': 'Member does not have a Push to Talk license assigned. Please assign a license and try again.',
+                            'de-DE': 'Dem Mitglied ist keine Push-to-Talk-Lizenz zugewiesen. Bitte weisen Sie eine Lizenz zu und versuchen Sie es erneut.',
+                            'zh-CN': '该成员未分配对讲（Push to Talk）许可。请为其分配许可后重试。',
+                        },
+                    },
+                ],
+            },
+            {
+                key: 'RingCentral.pushToTalk.9c831be93fef0ab9dbd59a58c056b82f.app.common.SERVER_API_ERRORS.BULK_ADD_CHANNELS.TEMPLATE_CONCURRENCY_LIMIT_REACHED',
+                source: 'merged_translations_CORE_20260618.json',
+                'en-US': 'Sorry, the service is temporarily unavailable. Please try again later.',
+            },
+        ], null, 2);
+
         // ═══════════════════════════════════════
         //  COMPUTED
         // ═══════════════════════════════════════
@@ -2258,73 +2627,69 @@ createApp({
             return location.host;
         });
 
-        // Tools belonging to the "UNS TOOLKIT" sidebar section. Everything else
-        // (jira-keys, working-files) is part of the legacy JQL2Keys brand.
+        // Each sidebar section maps to a brand profile that drives the header's
+        // colours, icon label, and default copy. A tool lands in a section by
+        // membership below; everything unlisted falls back to the legacy
+        // JQL2Keys brand.
         const UNS_TOOLKIT_TOOLS = new Set(['key-metadata', 'utm-analysis', 'brand-coverage', 'template-diff']);
+        const DAILY_WORK_TOOLS  = new Set(['bug-helper']);
         const isUnsTool = computed(() => UNS_TOOLKIT_TOOLS.has(activeTool.value));
 
-        // Per-tool header configuration. Each tool can give its own title,
-        // subtitle, tag pill, and short tool-page heading. Defaults fall back to
-        // either the UNS or JQL2Keys brand based on which section the tool lives
-        // in, so adding a new tool only needs an entry here if you want it to
-        // override the default.
-        const TOOL_HEADER_CONFIG = {
-            'jira-keys': {
+        // Brand profiles — one per sidebar section. `headerBranding` picks the
+        // profile for the active tool, then lets TOOL_HEADER_CONFIG override the
+        // copy (title / subtitle / tag) per-tool.
+        const BRAND_PROFILES = {
+            jql: {
                 title: 'JQL2Keys',
                 subtitle: 'Extract translation keys from Jira L10N bugs',
                 tag: 'Jira · L10N',
+                iconLabel: 'L10N',
+                gradient: 'from-blue-700 to-indigo-800',
+                subtitleClass: 'text-blue-200',
+                tagClass: 'text-blue-100',
             },
-            'working-files': {
-                title: 'JQL2Keys',
-                subtitle: 'Build XTM / OPUS working-files package from extracted keys',
-                tag: 'Jira · L10N',
-            },
-            'key-metadata': {
+            uns: {
                 title: 'UNS Assistant',
                 subtitle: 'Localization co-pilot for the Unified Notification Service',
                 tag: 'internal · LQA tools',
+                iconLabel: 'UNS',
+                gradient: 'from-indigo-700 via-indigo-700 to-purple-700',
+                subtitleClass: 'text-indigo-200',
+                tagClass: 'text-indigo-100',
+            },
+            daily: {
+                title: 'Bug Fixing Helper',
+                subtitle: 'Distil source metadata from filtered translation dumps',
+                tag: 'daily · L10N triage',
+                iconLabel: 'FIX',
+                gradient: 'from-teal-700 via-teal-700 to-emerald-700',
+                subtitleClass: 'text-teal-100',
+                tagClass: 'text-teal-100',
+            },
+        };
+
+        const brandKey = computed(() => {
+            if (UNS_TOOLKIT_TOOLS.has(activeTool.value)) return 'uns';
+            if (DAILY_WORK_TOOLS.has(activeTool.value))  return 'daily';
+            return 'jql';
+        });
+
+        // Per-tool header copy overrides. Defaults come from the section's brand
+        // profile, so a new tool only needs an entry here if it wants a custom
+        // subtitle/title/tag.
+        const TOOL_HEADER_CONFIG = {
+            'working-files': {
+                subtitle: 'Build XTM / OPUS working-files package from extracted keys',
             },
             'utm-analysis': {
-                title: 'UNS Assistant',
                 subtitle: 'Decode UNS Template Manager URLs into TIDs, brands & locales',
-                tag: 'internal · LQA tools',
-            },
-            'brand-coverage': {
-                title: 'UNS Assistant',
-                subtitle: 'Localization co-pilot for the Unified Notification Service',
-                tag: 'internal · LQA tools',
-            },
-            'template-diff': {
-                title: 'UNS Assistant',
-                subtitle: 'Localization co-pilot for the Unified Notification Service',
-                tag: 'internal · LQA tools',
             },
         };
 
         const headerBranding = computed(() => {
+            const profile = BRAND_PROFILES[brandKey.value] || BRAND_PROFILES.jql;
             const cfg = TOOL_HEADER_CONFIG[activeTool.value];
-            const uns = isUnsTool.value;
-            const defaults = uns
-                ? {
-                      title: 'UNS Assistant',
-                      subtitle: 'Localization co-pilot for the Unified Notification Service',
-                      tag: 'internal · LQA tools',
-                  }
-                : {
-                      title: 'JQL2Keys',
-                      subtitle: 'Extract translation keys from Jira L10N bugs',
-                      tag: 'Jira · L10N',
-                  };
-            return {
-                ...defaults,
-                ...(cfg || {}),
-                iconLabel: uns ? 'UNS' : 'L10N',
-                gradient: uns
-                    ? 'from-indigo-700 via-indigo-700 to-purple-700'
-                    : 'from-blue-700 to-indigo-800',
-                subtitleClass: uns ? 'text-indigo-200' : 'text-blue-200',
-                tagClass: uns ? 'text-indigo-100' : 'text-blue-100',
-            };
+            return { ...profile, ...(cfg || {}) };
         });
 
         // ═══════════════════════════════════════
@@ -3902,6 +4267,13 @@ createApp({
             const s = (v || '').slice(0, 100000);
             localStorage.setItem('uns_utmUrlInput', s);
         });
+        watch(bugInput, (v) => {
+            // Dumps can be large; cap at ~500k chars so a paste survives reloads
+            // without ballooning localStorage.
+            const s = (v || '').slice(0, 500000);
+            localStorage.setItem('uns_bugInput', s);
+        });
+        watch(bugView, (v) => { localStorage.setItem('uns_bugView', v); });
 
         function loadUnsSample() {
             unsKeysInput.value = UNS_SAMPLE_KEYS;
@@ -4050,6 +4422,268 @@ createApp({
             showToast('Sample URLs loaded');
         }
 
+        // ═══════════════════════════════════════
+        //  DAILY WORK — Bug Fixing Helper
+        // ═══════════════════════════════════════
+        // Translation-bug triage starts from a "filtered dump": the long JSON you
+        // get when isolating one key out of the full translation library. Each
+        // unit carries locale text plus provenance under `_source` (the winning
+        // source) and `_all_sources` (every source that contributed). For bug
+        // tracing we only care about the provenance fields below — the helper
+        // distils them into a matrix and parks the translations in a second zone.
+        const BUG_META_FIELDS = ['source', 'task_id', 'task_name', 'project_id', 'base_ref', 'head_ref', 'created_at', 'merge_request_iid', 'release'];
+
+        function stripBugCodeFences(s) {
+            const t = String(s || '').trim();
+            const fence = t.match(/^```[a-zA-Z0-9]*\s*\n([\s\S]*?)\n?```$/);
+            return fence ? fence[1].trim() : t;
+        }
+
+        function tryParseJson(s) {
+            try { return { ok: true, value: JSON.parse(s) }; }
+            catch (e) { return { ok: false, error: e.message }; }
+        }
+
+        // Tolerant parse: handle a clean array/object, a markdown-fenced blob, or
+        // text with surrounding noise (salvage the outermost [...] or {...}).
+        function parseBugInput(text) {
+            const raw = String(text || '').trim();
+            if (!raw) return { units: [], error: '' };
+            const cleaned = stripBugCodeFences(raw);
+
+            let parsed = tryParseJson(cleaned);
+            if (!parsed.ok) {
+                const a = cleaned.indexOf('['), b = cleaned.lastIndexOf(']');
+                if (a >= 0 && b > a) parsed = tryParseJson(cleaned.slice(a, b + 1));
+            }
+            if (!parsed.ok) {
+                const a = cleaned.indexOf('{'), b = cleaned.lastIndexOf('}');
+                if (a >= 0 && b > a) parsed = tryParseJson(cleaned.slice(a, b + 1));
+            }
+            if (!parsed.ok) return { units: [], error: 'Could not parse JSON — ' + parsed.error };
+
+            const v = parsed.value;
+            let arr;
+            if (Array.isArray(v)) {
+                arr = v;
+            } else if (v && typeof v === 'object') {
+                if ('key' in v || Object.keys(v).some(k => looksLikeBcp47(k))) {
+                    arr = [v];
+                } else {
+                    const vals = Object.values(v).filter(x => x && typeof x === 'object' && !Array.isArray(x));
+                    arr = vals.length ? vals : [v];
+                }
+            } else {
+                return { units: [], error: 'Expected a JSON array or object of translation units' };
+            }
+            const units = arr.filter(x => x && typeof x === 'object' && !Array.isArray(x));
+            if (!units.length) return { units: [], error: 'No translation-unit objects found in the JSON' };
+            return { units, error: '' };
+        }
+
+        // Pull the provenance rows + translations out of one raw unit.
+        function extractBugUnit(unit, idx) {
+            const key = typeof unit.key === 'string' ? unit.key : '';
+            const sourceFile = typeof unit.source === 'string' ? unit.source : '';
+            const inconsistencies = unit.inconsistencies_in_new != null ? String(unit.inconsistencies_in_new) : '';
+
+            const primary = (unit._source && typeof unit._source === 'object' && !Array.isArray(unit._source)) ? unit._source : null;
+            let rawSources = [];
+            if (Array.isArray(unit._all_sources)) rawSources = unit._all_sources.filter(s => s && typeof s === 'object' && !Array.isArray(s));
+            else if (primary) rawSources = [primary];
+
+            const rows = rawSources.map(s => {
+                const merged = { ...s };
+                // The Scan entry in _all_sources usually drops project_id/base_ref/
+                // head_ref that live on the top-level _source — graft them back by
+                // matching task_id (or when there is a single source).
+                if (primary && (rawSources.length === 1 || (s.task_id != null && primary.task_id === s.task_id))) {
+                    for (const f of BUG_META_FIELDS) {
+                        if (merged[f] == null && primary[f] != null) merged[f] = primary[f];
+                    }
+                }
+                const wl = Array.isArray(s.won_locales) ? s.won_locales : null;
+                const str = (f) => (merged[f] != null ? String(merged[f]) : '');
+                return {
+                    source: str('source'), task_id: str('task_id'), task_name: str('task_name'),
+                    project_id: str('project_id'), base_ref: str('base_ref'), head_ref: str('head_ref'),
+                    created_at: str('created_at'), release: str('release'),
+                    merge_request_iid: merged.merge_request_iid != null ? merged.merge_request_iid : null,
+                    wonLocales: wl ? wl.length : null,
+                    wonLocalesList: wl ? wl.join(', ') : '',
+                };
+            });
+
+            const topTrans = {};
+            for (const [k, val] of Object.entries(unit)) {
+                if (looksLikeBcp47(k) && typeof val === 'string') topTrans[k] = val;
+            }
+            const perSource = rawSources.map((s, i) => ({
+                label: s.merge_request_iid != null ? ('MR#' + s.merge_request_iid)
+                     : (s.source != null ? String(s.source) : ('src ' + (i + 1))),
+                source: s.source != null ? String(s.source) : '',
+                translations: (s.translations && typeof s.translations === 'object') ? s.translations : {},
+            }));
+
+            return { key: key || ('(unit ' + (idx + 1) + ')'), sourceFile, inconsistencies, rows, topTrans, perSource };
+        }
+
+        function fmtBugDate(s) {
+            if (!s) return '';
+            const str = String(s);
+            const m = str.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/);
+            if (m) return m[1] + ' ' + m[2];
+            const d = str.match(/^\d{4}-\d{2}-\d{2}/);
+            return d ? d[0] : str;
+        }
+
+        function bugSourceBadgeClass(src) {
+            const s = String(src || '').toLowerCase();
+            if (s === 'scan')   return 'bg-blue-100 text-blue-700';
+            if (s === 'mr')     return 'bg-emerald-100 text-emerald-700';
+            if (s === 'legacy') return 'bg-amber-100 text-amber-700';
+            return 'bg-gray-100 text-gray-600';
+        }
+
+        function bugUnitMatches(u, q) {
+            if (!q) return true;
+            const hay = [u.key, u.sourceFile];
+            for (const r of u.rows) hay.push(r.source, r.task_name, r.task_id, r.release, r.project_id, r.base_ref, r.head_ref);
+            return hay.filter(Boolean).some(s => s.toLowerCase().includes(q));
+        }
+
+        const bugParsed = computed(() => parseBugInput(bugInput.value));
+        const bugUnits = computed(() => bugParsed.value.units.map((u, i) => extractBugUnit(u, i)));
+        const bugParseError = computed(() => bugUnits.value.length ? '' : bugParsed.value.error);
+
+        const bugStats = computed(() => {
+            const us = bugUnits.value;
+            const keys = new Set(), tasks = new Set(), mrs = new Set(), locales = new Set();
+            let sourceRecords = 0, withoutMeta = 0;
+            for (const u of us) {
+                if (u.key) keys.add(u.key);
+                sourceRecords += u.rows.length;
+                if (!u.rows.length) withoutMeta++;
+                for (const r of u.rows) {
+                    if (r.task_id) tasks.add(r.task_id);
+                    if (r.merge_request_iid != null) mrs.add(String(r.merge_request_iid));
+                }
+                for (const l of Object.keys(u.topTrans)) locales.add(l);
+                for (const ps of u.perSource) for (const l of Object.keys(ps.translations)) locales.add(l);
+            }
+            return { units: us.length, keys: keys.size, sourceRecords, tasks: tasks.size, mrs: mrs.size, locales: locales.size, withoutMeta };
+        });
+
+        const bugMetaGroups = computed(() => {
+            const q = bugFilter.value.trim().toLowerCase();
+            return bugUnits.value
+                .filter(u => u.rows.length && bugUnitMatches(u, q))
+                .map(u => ({
+                    key: u.key,
+                    leaf: u.key.includes('.') ? u.key.split('.').pop() : '',
+                    sourceFile: u.sourceFile,
+                    inconsistencies: u.inconsistencies,
+                    rows: u.rows,
+                }));
+        });
+
+        const bugTransCards = computed(() => {
+            const q = bugFilter.value.trim().toLowerCase();
+            const out = [];
+            for (const u of bugUnits.value) {
+                if (!bugUnitMatches(u, q)) continue;
+                const locales = new Set(Object.keys(u.topTrans));
+                for (const ps of u.perSource) for (const l of Object.keys(ps.translations)) locales.add(l);
+                if (!locales.size) continue;
+                const sorted = [...locales].sort();
+                const cur = {};
+                let divergedCount = 0;
+                const rows = sorted.map(loc => {
+                    const variants = [];
+                    for (const ps of u.perSource) {
+                        const t = ps.translations[loc];
+                        if (typeof t === 'string') variants.push({ label: ps.label, source: ps.source, text: t });
+                    }
+                    const current = (typeof u.topTrans[loc] === 'string') ? u.topTrans[loc]
+                                  : (variants[0] ? variants[0].text : '');
+                    cur[loc] = current;
+                    const distinct = new Set(variants.map(v => v.text));
+                    if (typeof u.topTrans[loc] === 'string') distinct.add(u.topTrans[loc]);
+                    const diverged = distinct.size > 1;
+                    if (diverged) divergedCount++;
+                    return { locale: loc, text: current, diverged, variants };
+                });
+                out.push({
+                    key: u.key,
+                    leaf: u.key.includes('.') ? u.key.split('.').pop() : '',
+                    locales: sorted, rows, divergedCount,
+                    json: JSON.stringify(cur, null, 2),
+                });
+            }
+            return out;
+        });
+
+        function bugDiffId(key, locale) { return key + '' + locale; }
+        function toggleBugDiff(key, locale) {
+            const id = bugDiffId(key, locale);
+            const s = new Set(bugDiffExpanded.value);
+            if (s.has(id)) s.delete(id); else s.add(id);
+            bugDiffExpanded.value = s;
+        }
+        function bugDiffOpen(key, locale) { return bugDiffExpanded.value.has(bugDiffId(key, locale)); }
+
+        function loadBugSample() {
+            bugInput.value = BUG_SAMPLE;
+            showToast('Sample dump loaded');
+        }
+
+        function bugMetaCsvText() {
+            const header = ['key', 'source', 'task_name', 'task_id', 'project_id', 'base_ref', 'head_ref', 'merge_request_iid', 'release', 'created_at', 'won_locales'];
+            const esc = (v) => {
+                const s = (v == null) ? '' : String(v);
+                return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+            };
+            const lines = [header.join(',')];
+            for (const u of bugUnits.value) {
+                for (const r of u.rows) {
+                    lines.push([u.key, r.source, r.task_name, r.task_id, r.project_id, r.base_ref, r.head_ref,
+                                (r.merge_request_iid == null ? '' : r.merge_request_iid), r.release, r.created_at,
+                                (r.wonLocales == null ? '' : r.wonLocales)].map(esc).join(','));
+                }
+            }
+            return lines.join('\n');
+        }
+        function copyBugMetaCsv() {
+            if (!bugStats.value.sourceRecords) return;
+            copyText(bugMetaCsvText());
+        }
+
+        function exportBugMetaJson() {
+            if (!bugStats.value.sourceRecords) return;
+            const data = bugUnits.value.filter(u => u.rows.length).map(u => {
+                const out = { key: u.key };
+                if (u.sourceFile) out.source_file = u.sourceFile;
+                if (u.inconsistencies) out.inconsistencies_in_new = u.inconsistencies;
+                out.sources = u.rows.map(r => {
+                    const o = {};
+                    for (const f of ['source', 'task_id', 'task_name', 'project_id', 'base_ref', 'head_ref', 'merge_request_iid', 'release', 'created_at']) {
+                        if (r[f] !== '' && r[f] != null) o[f] = r[f];
+                    }
+                    if (r.wonLocales != null) o.won_locales_count = r.wonLocales;
+                    return o;
+                });
+                return out;
+            });
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `bug-fixing-metadata-${new Date().toISOString().slice(0, 10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('Metadata JSON exported');
+        }
+
         function exportUnsJson() {
             if (!unsStats.value.total) return;
             const data = buildUnsExport();
@@ -4101,6 +4735,11 @@ createApp({
             // UTM Analysis
             utmUrlInput, utmParsedList, utmOkList, utmCombined, loadUtmSample,
             jiraDomainUrl, jiraDomainHost,
+            // Bug Fixing Helper
+            bugInput, bugView, bugFilter, bugUnits, bugParseError, bugStats,
+            bugMetaGroups, bugTransCards,
+            fmtBugDate, bugSourceBadgeClass, toggleBugDiff, bugDiffOpen,
+            loadBugSample, copyBugMetaCsv, exportBugMetaJson,
         };
     }
 }).mount('#app');
