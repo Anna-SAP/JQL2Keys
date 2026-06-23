@@ -4263,7 +4263,9 @@ createApp({
                 }
 
                 const localeArr = [...locales].sort();
-                const build = (file.name.replace(/\.json$/i, '').replace(/[^\w.\-]+/g, '_')) || 'merged';
+                // Output under a 'trunk' build folder, matching the ZIP channel's
+                // global-trunk convention: <ticket>/<lang>/trunk/opus_jsons/…
+                const build = 'trunk';
                 sourceJson.value = { index, noHashIndex, locales: localeArr };
                 sourceJsonInfo.value = {
                     fileName: file.name, build,
