@@ -878,6 +878,7 @@
                                 <div>Languages: <span class="font-semibold">{{genResult.stats.langs}}</span></div>
                                 <div>Tickets: <span class="font-semibold">{{genResult.stats.tickets}}</span></div>
                                 <div>Keys matched: <span class="font-semibold text-emerald-800">{{genResult.stats.matchedKeys}}</span></div>
+                                <div v-if="genResult.stats.hashNormalized">&nbsp;&nbsp;↳ via hash fallback: <span class="font-semibold text-emerald-800">{{genResult.stats.hashNormalized}}</span></div>
                                 <div>Keys missing: <span class="font-semibold" :class="genResult.stats.missingKeys > 0 ? 'text-amber-600' : 'text-emerald-800'">{{genResult.stats.missingKeys}}</span></div>
                                 <div>Output files: <span class="font-semibold">{{genResult.stats.outputFiles}}</span></div>
                             </div>
@@ -2162,6 +2163,21 @@ const ALL_LANGS_RE = /\ball\s+(?:languages|langs|locales)\b/i;
 // Bucket for keys found without any detectable language context. Surfaced in
 // results (instead of being dropped) so extracted keys are never lost silently.
 const UNKNOWN_LANG = '(unknown)';
+
+// OPUS translation keys are RingCentral.<app>.<hash>.<path…>, where <hash> is a
+// build-specific ~32-hex bundle id (e.g. apTwilight.a8808689…). The same logical
+// string keeps its <app> and <path> across builds but gets re-hashed, so a key
+// copied from a Jira bug (hash X) will NOT string-match that very string in a
+// freshly exported source.json (hash Y) — the root cause of an empty working-
+// files package. stripKeyHash drops that middle hash segment so the two forms
+// can be matched on their stable identity. Non-hashed keys pass through intact.
+function stripKeyHash(key) {
+    const p = String(key).split('.');
+    if (p.length >= 4 && /^[0-9a-f]{16,40}$/i.test(p[2])) {
+        return p[0] + '.' + p[1] + '.' + p.slice(3).join('.');
+    }
+    return key;
+}
 
 function parseLangList(raw) {
     if (!raw) return [];
@@ -3745,12 +3761,14 @@ createApp({
 
             // Orphan keys = keys found with no enclosing language section.
             if (orphanKeys.length > 0) {
-                // Prefer fallback languages inferred from the issue title/fields.
-                // If none exist, still surface the keys under a sentinel bucket so
-                // they are never silently dropped (the cause of a confusing
-                // "1 bug / 0 keys" result). Downstream views and the ZIP generator
-                // treat an unknown lang as "source missing", which is accurate here.
-                const targets = fallbackLangs.length > 0 ? fallbackLangs : [UNKNOWN_LANG];
+                // Prefer fallback languages inferred from the issue title/fields —
+                // an undetected lang is usually just a human omission in the bug
+                // and is really the ticket's target locale (e.g. de-DE). When even
+                // that is absent, fall back to en-US instead of a dead "(unknown)"
+                // bucket: the source ZIP is always organized around the en-US
+                // source, so this both surfaces the keys AND points their value
+                // lookup at the one locale guaranteed to be present.
+                const targets = fallbackLangs.length > 0 ? fallbackLangs : ['en-US'];
                 for (const lang of targets) {
                     if (!result[lang]) result[lang] = [];
                     for (const k of orphanKeys) {
@@ -4149,7 +4167,7 @@ createApp({
             try {
                 const info = sourceZipInfo.value;
                 const outputZip = new JSZip();
-                let totalMatched = 0, totalMissing = 0, outputFiles = 0;
+                let totalMatched = 0, totalMissing = 0, outputFiles = 0, totalHashNormalized = 0;
                 const missingDetail = {};
 
                 const tickets = Object.keys(results.value);
@@ -4195,18 +4213,28 @@ createApp({
 
                     if (paths.length === 0) { cache[cacheKey] = null; return null; }
 
-                    let merged = {};
+                    const data = {};
                     for (const path of paths) {
                         try {
                             const txt = await sourceZip.value.file(path).async('string');
-                            Object.assign(merged, JSON.parse(txt));
+                            Object.assign(data, JSON.parse(txt));
                         } catch (e) {
                             log(`    [load] Failed ${path}: ${e.message}`, 'error');
                         }
                     }
-                    cache[cacheKey] = merged;
-                    log(`    [load] ${lang}/${build}: ${Object.keys(merged).length} keys from ${paths.length} file(s)`, 'info');
-                    return merged;
+                    // Secondary, hash-insensitive index so a key whose build hash
+                    // drifted (Jira hash ≠ export hash) still resolves to a value.
+                    // First writer wins on collision (one source.json carries one
+                    // hash, so collisions are rare and same-valued in practice).
+                    const noHash = {};
+                    for (const k in data) {
+                        const nh = stripKeyHash(k);
+                        if (!(nh in noHash)) noHash[nh] = data[k];
+                    }
+                    const result = { data, noHash };
+                    cache[cacheKey] = result;
+                    log(`    [load] ${lang}/${build}: ${Object.keys(data).length} keys from ${paths.length} file(s)`, 'info');
+                    return result;
                 }
 
                 function getBuildsForLang(lang) {
@@ -4222,35 +4250,51 @@ createApp({
                     for (const [lang, keys] of Object.entries(ticketLangs)) {
                         processed++;
                         genState.progress = processed;
-                        genState.phase = `Processing ${ticket}/${lang} (${processed}/${totalTasks})...`;
+                        // An undetermined lang is mapped to en-US: the source ZIP is
+                        // organized around the en-US source, so that is where these
+                        // keys' values actually live (rule: (unknown) → en-US).
+                        const effLang = (lang === UNKNOWN_LANG) ? 'en-US' : lang;
+                        genState.phase = `Processing ${ticket}/${effLang} (${processed}/${totalTasks})...`;
 
-                        const buildNames = getBuildsForLang(lang);
+                        const buildNames = getBuildsForLang(effLang);
                         if (buildNames.length === 0) {
-                            log(`  [${ticket}/${lang}] No source available for this lang — all keys missing`, 'warn');
-                            if (!missingDetail[lang]) missingDetail[lang] = [];
-                            keys.forEach(k => { if (!missingDetail[lang].includes(k)) missingDetail[lang].push(k); });
+                            log(`  [${ticket}/${effLang}] No source available for this lang — all keys missing`, 'warn');
+                            if (!missingDetail[effLang]) missingDetail[effLang] = [];
+                            keys.forEach(k => { if (!missingDetail[effLang].includes(k)) missingDetail[effLang].push(k); });
                             totalMissing += keys.length;
                             continue;
                         }
 
                         const matchedKeys = new Set();
                         for (const buildName of buildNames) {
-                            const sourceData = await getSourceData(lang, buildName);
-                            if (!sourceData) continue;
+                            const source = await getSourceData(effLang, buildName);
+                            if (!source) continue;
+                            const { data: sourceData, noHash } = source;
 
                             const matched = {};
                             for (const key of keys) {
                                 if (Object.prototype.hasOwnProperty.call(sourceData, key)) {
                                     matched[key] = sourceData[key];
                                     matchedKeys.add(key);
+                                } else {
+                                    // Hash-insensitive fallback: the bug's key and the
+                                    // freshly exported source often differ only by the
+                                    // build hash segment. Keep the bug's original key so
+                                    // the output stays traceable to the Jira ticket.
+                                    const nh = stripKeyHash(key);
+                                    if (Object.prototype.hasOwnProperty.call(noHash, nh)) {
+                                        matched[key] = noHash[nh];
+                                        if (!matchedKeys.has(key)) totalHashNormalized++;
+                                        matchedKeys.add(key);
+                                    }
                                 }
                             }
 
                             if (Object.keys(matched).length > 0) {
-                                const outPath = `${ticket}/${lang}/${buildName}/opus_jsons/source.json`;
+                                const outPath = `${ticket}/${effLang}/${buildName}/opus_jsons/source.json`;
                                 outputZip.file(outPath, JSON.stringify(matched, null, 2));
                                 outputFiles++;
-                                log(`  [${ticket}/${lang}/${buildName}] ${Object.keys(matched).length} key(s) extracted`, 'success');
+                                log(`  [${ticket}/${effLang}/${buildName}] ${Object.keys(matched).length} key(s) extracted`, 'success');
                             }
                         }
 
@@ -4259,9 +4303,9 @@ createApp({
                         totalMissing += missing.length;
 
                         if (missing.length > 0) {
-                            if (!missingDetail[lang]) missingDetail[lang] = [];
-                            missing.forEach(k => { if (!missingDetail[lang].includes(k)) missingDetail[lang].push(k); });
-                            log(`  [${ticket}/${lang}] ${missing.length} key(s) NOT found in any build`, 'warn');
+                            if (!missingDetail[effLang]) missingDetail[effLang] = [];
+                            missing.forEach(k => { if (!missingDetail[effLang].includes(k)) missingDetail[effLang].push(k); });
+                            log(`  [${ticket}/${effLang}] ${missing.length} key(s) NOT found in any build`, 'warn');
                         }
                     }
                 }
@@ -4284,13 +4328,14 @@ createApp({
                         langs: allLangs.size,
                         matchedKeys: totalMatched,
                         missingKeys: totalMissing,
+                        hashNormalized: totalHashNormalized,
                         outputFiles,
                     },
                     missingDetail,
                 };
 
                 log(`Package ready: ${outputFiles} files, ${formatFileSize(blob.size)}`, 'success');
-                log(`  Matched: ${totalMatched}, Missing: ${totalMissing}`, totalMissing > 0 ? 'warn' : 'success');
+                log(`  Matched: ${totalMatched} (of which ${totalHashNormalized} via hash-insensitive fallback), Missing: ${totalMissing}`, totalMissing > 0 ? 'warn' : 'success');
             } catch (err) {
                 genState.error = err.message;
                 log(`Generation error: ${err.message}`, 'error');
