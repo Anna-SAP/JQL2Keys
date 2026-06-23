@@ -3576,6 +3576,47 @@ createApp({
             return langs;
         }
 
+        // ── Structured JSON "key" entries ──────────────────────────────────
+        // Jira descriptions/comments frequently embed translation metadata as
+        // JSON — inside {code} blocks (e.g. GSP-2827) or pasted into table cells
+        // (e.g. GSP-2829). Each object looks like:
+        //   { "key": "RingCentral…", "source": "…json", "en-US": "…", "de-DE": "…" }
+        // Because such a key never sits alone on a line, the line-anchored
+        // patterns in parseContent skip it entirely. This pass pulls every
+        // `"key": "…"` value out directly and pairs it with the target locale(s)
+        // declared in the same object (every BCP-47 property except the en-US
+        // source). When an object declares no target locale we return langs:[]
+        // so the caller can fall back to the issue's title/field languages.
+        function extractJsonKeyEntries(cleaned, isLikelyKey) {
+            const entries = [];
+            const keyRe = /"key"\s*:\s*"([^"]+)"/g;
+            const hits = [];
+            let m;
+            while ((m = keyRe.exec(cleaned)) !== null) {
+                hits.push({ key: m[1].trim(), start: m.index, end: keyRe.lastIndex });
+            }
+            const locRe = /"([a-z]{2,3}-(?:[A-Z]{2,4}|\d{3}))"\s*:/g;
+            for (let i = 0; i < hits.length; i++) {
+                const { key, end } = hits[i];
+                if (!isLikelyKey(key)) continue;
+                // The locales belonging to THIS object live between its own
+                // "key" and the next object's "key" (or the end of the text for
+                // the last object). Slicing on that boundary keeps a later
+                // object's "de-DE" from leaking onto an earlier key.
+                const windowEnd = i + 1 < hits.length ? hits[i + 1].start : cleaned.length;
+                const window = cleaned.slice(end, windowEnd);
+                const langs = [];
+                locRe.lastIndex = 0;
+                let lm;
+                while ((lm = locRe.exec(window)) !== null) {
+                    const lc = lm[1];
+                    if (lc.toLowerCase() !== 'en-us' && !langs.includes(lc)) langs.push(lc);
+                }
+                entries.push({ key, langs });
+            }
+            return entries;
+        }
+
         function parseContent(text, fallbackLangs = []) {
             const result = {};
             let currentLang = null;
@@ -3617,6 +3658,38 @@ createApp({
                 /^\s*([\w]+(?:\.[\w]+){2,}(?:__[\w]+)+)\s*$/,
             ];
 
+            // Does a *bare* token look like a translation key? Reuses the same
+            // patterns as the whole-line match, but anchored against the token
+            // itself — for keys that are embedded inline (inside JSON, table
+            // cells, or quotes) and therefore never own a whole line.
+            const isLikelyKey = (s) => {
+                if (!s) return false;
+                s = s.trim();
+                if (s.length <= 15 || s.startsWith('//')) return false;
+                if (keyRe && keyRe.test(s)) return true;
+                return defaultKeyPatterns.some(re => re.test(s));
+            };
+
+            const pushKey = (key, lang) => {
+                if (lang) {
+                    if (!result[lang]) result[lang] = [];
+                    if (!result[lang].includes(key)) result[lang].push(key);
+                } else if (!orphanKeys.includes(key)) {
+                    orphanKeys.push(key);
+                }
+            };
+
+            // ── Pass 1: structured JSON "key" entries (code blocks & tables) ──
+            // These carry their own target locale(s), so file them precisely and
+            // remember them so the line pass below never re-files them as orphans.
+            const jsonKeys = new Set();
+            for (const { key, langs } of extractJsonKeyEntries(cleaned, isLikelyKey)) {
+                jsonKeys.add(key);
+                if (langs.length) langs.forEach(l => pushKey(key, l));
+                else pushKey(key, null);
+            }
+
+            // ── Pass 2: line-based language sections + standalone/inline keys ──
             for (const line of lines) {
                 const trimmed = line.trim();
                 if (!trimmed) continue;
@@ -3629,31 +3702,44 @@ createApp({
                     continue;
                 }
 
-                // Key detection
-                let matchedKey = null;
+                const candidates = [];
 
-                // Try user pattern first
+                // (a) Whole-line key (highest confidence — original behavior)
+                let wholeKey = null;
                 if (keyRe) {
                     const m = trimmed.match(keyRe);
-                    if (m) matchedKey = m[1];
+                    if (m) wholeKey = m[1];
                 }
-
-                // Fallback to defaults
-                if (!matchedKey) {
+                if (!wholeKey) {
                     for (const pat of defaultKeyPatterns) {
                         const m = trimmed.match(pat);
-                        if (m && m[1].length > 15) { matchedKey = m[1]; break; }
+                        if (m && m[1].length > 15) { wholeKey = m[1]; break; }
+                    }
+                }
+                if (wholeKey) candidates.push(wholeKey);
+
+                // (b) Inline keys sharing a line with other content — a JSON
+                // fragment not caught by pass 1, a wiki table cell such as
+                // `| … | RingCentral.x.y.z |`, or a key referenced in prose. A
+                // bare token must carry real key structure (≥3 dotted segments,
+                // or a "__" / "#@#" separator) on top of isLikelyKey, which keeps
+                // ordinary words, file names and URLs out. The comment guard is
+                // applied at the LINE level: the tokenizer starts at the first
+                // letter and would otherwise strip a leading "// ", resurrecting
+                // an intentionally commented-out key.
+                if (!trimmed.startsWith('//')) {
+                    for (const tm of trimmed.matchAll(/[A-Za-z][\w.#@-]*[\w]/g)) {
+                        const tok = tm[0];
+                        if (!isLikelyKey(tok)) continue;
+                        const structured = (tok.match(/\./g) || []).length >= 2
+                            || tok.includes('__') || tok.includes('#@#');
+                        if (structured) candidates.push(tok);
                     }
                 }
 
-                if (matchedKey && !matchedKey.startsWith('//')) {
-                    if (currentLang) {
-                        if (!result[currentLang].includes(matchedKey))
-                            result[currentLang].push(matchedKey);
-                    } else {
-                        if (!orphanKeys.includes(matchedKey))
-                            orphanKeys.push(matchedKey);
-                    }
+                for (const key of candidates) {
+                    if (key.startsWith('//') || jsonKeys.has(key)) continue;
+                    pushKey(key, currentLang);
                 }
             }
 
