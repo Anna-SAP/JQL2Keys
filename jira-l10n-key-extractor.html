@@ -751,7 +751,7 @@
                             </div>
                             <div>
                                 <h2 class="text-sm font-semibold text-emerald-800">Step 2: Generate Working Files Package</h2>
-                                <p class="text-xs text-emerald-600">Upload full source ZIP (e.g., UNS.zip), then extract per-build key-value pairs</p>
+                                <p class="text-xs text-emerald-600">Upload a full source ZIP (e.g., UNS.zip) or a JSON translation dump, then extract key-value pairs</p>
                             </div>
                         </div>
                     </div>
@@ -763,14 +763,14 @@
                              :class="dragOver ? 'border-emerald-400 bg-emerald-50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-gray-400'"
                              class="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition"
                              @click="openZipPicker()">
-                            <input ref="zipInput" type="file" accept=".zip" class="hidden"
+                            <input ref="zipInput" type="file" accept=".zip,.json" class="hidden"
                                 @change="handleSourceZipSelect($event)" @click.stop>
                             <template v-if="!sourceZipName">
                                 <svg class="w-10 h-10 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
                                 </svg>
-                                <p class="text-sm text-gray-600 font-medium">Drop full source ZIP here or click to browse</p>
-                                <p class="text-xs text-gray-400 mt-1">Upload latest full source package (e.g., UNS.zip / Web.zip / AP.zip)</p>
+                                <p class="text-sm text-gray-600 font-medium">Drop full source ZIP or JSON here, or click to browse</p>
+                                <p class="text-xs text-gray-400 mt-1">ZIP package (UNS.zip / Web.zip / AP.zip) or JSON translation dump ([ { "key", "en-US", … } ])</p>
                             </template>
                             <template v-else>
                                 <div class="flex items-center justify-center gap-2">
@@ -784,7 +784,7 @@
                         </div>
 
                         <!-- ZIP Info -->
-                        <div v-if="sourceZipInfo" class="bg-gray-50 rounded-lg border border-gray-200 p-3">
+                        <div v-if="sourceKind==='zip' && sourceZipInfo" class="bg-gray-50 rounded-lg border border-gray-200 p-3">
                             <div class="text-xs font-medium text-gray-700 mb-2">Source Package Info</div>
                             <div v-if="sourceZipInfo.error" class="text-xs text-red-600">{{sourceZipInfo.error}}</div>
                             <template v-else>
@@ -825,22 +825,47 @@
                             </template>
                         </div>
 
+                        <!-- JSON Info -->
+                        <div v-if="sourceKind==='json' && sourceJsonInfo" class="bg-gray-50 rounded-lg border border-gray-200 p-3">
+                            <div class="text-xs font-medium text-gray-700 mb-2">Source Translation JSON</div>
+                            <div v-if="sourceJsonInfo.error" class="text-xs text-red-600">{{sourceJsonInfo.error}}</div>
+                            <template v-else>
+                                <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600">
+                                    <div>Entries: <span class="font-semibold text-gray-800">{{sourceJsonInfo.objCount}}</span></div>
+                                    <div>Unique keys: <span class="font-semibold text-gray-800">{{sourceJsonInfo.keyCount}}</span></div>
+                                    <div>Locale columns: <span class="font-semibold text-gray-800">{{sourceJsonInfo.locales.length}}</span></div>
+                                    <div>Skipped: <span class="font-semibold text-gray-500">{{sourceJsonInfo.skipped}}</span></div>
+                                </div>
+                                <div class="mt-2">
+                                    <div class="text-[10px] text-gray-500 mb-0.5">Locales found:</div>
+                                    <div class="flex flex-wrap gap-1">
+                                        <span v-for="lang in sourceJsonInfo.locales" :key="lang"
+                                            :class="langInResults(lang) ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'"
+                                            class="px-1.5 py-0.5 rounded text-[10px] font-medium">
+                                            {{lang}}
+                                        </span>
+                                    </div>
+                                </div>
+                                <p class="text-[10px] text-gray-400 mt-1.5">Green locale = present in extracted results &middot; Keys matched hash-insensitively, value falls back to en-US &middot; Output path: &lt;ticket&gt;/&lt;lang&gt;/{{sourceJsonInfo.build}}/opus_jsons/source.json</p>
+                            </template>
+                        </div>
+
                         <!-- Prerequisites prompt -->
-                        <div v-if="!sourceZipInfo || sourceZipInfo.error || !hasResults"
+                        <div v-if="!sourceReady || !hasResults"
                              class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700">
                             <div class="font-semibold mb-1">Prerequisites:</div>
                             <ul class="space-y-0.5 ml-4 list-disc">
                                 <li :class="hasResults ? 'text-emerald-700 line-through' : ''">
                                     Run JQL extraction (Step 1) to get translation keys
                                 </li>
-                                <li :class="(sourceZipInfo && !sourceZipInfo.error) ? 'text-emerald-700 line-through' : ''">
-                                    Upload the full source ZIP above
+                                <li :class="sourceReady ? 'text-emerald-700 line-through' : ''">
+                                    Upload the full source ZIP or JSON translation dump above
                                 </li>
                             </ul>
                         </div>
 
                         <!-- Generate Button -->
-                        <button v-if="sourceZipInfo && !sourceZipInfo.error && hasResults && !genState.generating"
+                        <button v-if="sourceReady && hasResults && !genState.generating"
                             @click="generateWorkingFiles"
                             class="w-full bg-emerald-600 text-white py-2.5 rounded-md text-sm font-medium hover:bg-emerald-700 transition flex items-center justify-center gap-2">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2233,12 +2258,19 @@ createApp({
 
         // Working Files Generator
         const sourceZip     = ref(null);
-        const sourceZipName = ref('');
+        const sourceZipName = ref('');   // displayed filename — set for both ZIP and JSON
         const sourceZipInfo = ref(null);
+        const sourceKind    = ref('');   // '' | 'zip' | 'json' — which input channel is loaded
+        const sourceJson    = ref(null); // { index, noHashIndex, locales } for the JSON channel
+        const sourceJsonInfo= ref(null); // display stats (or { error }) for the JSON channel
         const dragOver      = ref(false);
         const zipInput      = ref(null);
         const genState = reactive({ generating: false, phase: '', progress: 0, total: 0, error: '' });
         const genResult = ref(null);
+        // A usable full-source has been loaded via either channel.
+        const sourceReady = computed(() => sourceKind.value === 'json'
+            ? !!(sourceJsonInfo.value && !sourceJsonInfo.value.error)
+            : !!(sourceZipInfo.value && !sourceZipInfo.value.error));
 
         // ═══════════════════════════════════════
         //  UNS ASSISTANT — Key Metadata Extractor
@@ -4035,21 +4067,33 @@ createApp({
 
         function openZipPicker() { if (zipInput.value) zipInput.value.click(); }
 
+        // Route an uploaded file to the right loader by extension. Two channels
+        // provide the same thing — the full source/translation — either as the
+        // OPUS ZIP package or as a list-of-objects JSON translation dump.
+        async function loadSourceFile(file) {
+            if (!file) return;
+            const name = file.name.toLowerCase();
+            if (name.endsWith('.json')) await loadSourceJson(file);
+            else if (name.endsWith('.zip')) await loadSourceZip(file);
+            else log(`Unsupported file: ${file.name} (upload a .zip or .json)`, 'error');
+        }
+
         async function handleSourceZipDrop(event) {
             dragOver.value = false;
-            const file = event.dataTransfer?.files?.[0];
-            if (file && file.name.toLowerCase().endsWith('.zip')) await loadSourceZip(file);
+            await loadSourceFile(event.dataTransfer?.files?.[0]);
         }
 
         async function handleSourceZipSelect(event) {
-            const file = event.target?.files?.[0];
-            if (file) await loadSourceZip(file);
+            await loadSourceFile(event.target?.files?.[0]);
             event.target.value = '';
         }
 
         async function loadSourceZip(file) {
             try {
                 log(`Loading source ZIP: ${file.name} (${formatFileSize(file.size)})...`);
+                sourceKind.value = 'zip';
+                sourceJson.value = null;
+                sourceJsonInfo.value = null;
                 sourceZipName.value = file.name;
                 sourceZipInfo.value = null;
                 genResult.value = null;
@@ -4154,8 +4198,94 @@ createApp({
             }
         }
 
+        // Alternative full-source channel: a list-of-objects JSON translation dump
+        //   [ { "key": "RingCentral…", "source": "…json", "en-US": "…", "de-DE": "…", … } ]
+        // Each object carries a key plus one or more BCP-47 locale columns (the
+        // attached sample is en-US-only; the rich form has all 18). We index it by
+        // key — and by hash-stripped key — per locale, so the generator can pull
+        // the value for whatever language each extracted key was filed under,
+        // exactly like the ZIP path, just sourced from JSON.
+        async function loadSourceJson(file) {
+            try {
+                log(`Loading source JSON: ${file.name} (${formatFileSize(file.size)})...`);
+                sourceKind.value = 'json';
+                sourceZip.value = null;
+                sourceZipInfo.value = null;
+                sourceZipName.value = file.name;
+                sourceJson.value = null;
+                sourceJsonInfo.value = null;
+                genResult.value = null;
+                genState.error = '';
+
+                const text = await file.text();
+                let arr;
+                try { arr = JSON.parse(text); }
+                catch (e) { throw new Error(`Invalid JSON: ${e.message}`); }
+                if (!Array.isArray(arr)) {
+                    throw new Error('Expected a JSON array of { "key": …, "<locale>": value } objects.');
+                }
+
+                const isLocale = (k) => /^[a-z]{2,3}-(?:[A-Z]{2,4}|[0-9]{3})$/.test(k);
+                const index = {};        // key          -> { locale: value }  (first writer wins per locale)
+                const noHashIndex = {};  // strippedKey  -> { locale: value }  (first writer wins per locale)
+                const locales = new Set();
+                let objCount = 0, valueCount = 0, skipped = 0, dupKeys = 0;
+
+                for (const obj of arr) {
+                    if (!obj || typeof obj !== 'object' || typeof obj.key !== 'string') { skipped++; continue; }
+                    const perLocale = {};
+                    for (const [field, val] of Object.entries(obj)) {
+                        if (isLocale(field) && typeof val === 'string') {
+                            perLocale[field] = val;
+                            locales.add(field);
+                            valueCount++;
+                        }
+                    }
+                    if (Object.keys(perLocale).length === 0) { skipped++; continue; }
+                    objCount++;
+                    const key = obj.key;
+                    if (index[key]) dupKeys++; else index[key] = {};
+                    const nh = stripKeyHash(key);
+                    if (!noHashIndex[nh]) noHashIndex[nh] = {};
+                    // First writer wins per (key, locale) — keep both indexes in
+                    // agreement on duplicates while still merging distinct locale
+                    // columns that arrive across repeated key entries.
+                    for (const [loc, v] of Object.entries(perLocale)) {
+                        if (!(loc in index[key]))  index[key][loc]  = v;
+                        if (!(loc in noHashIndex[nh])) noHashIndex[nh][loc] = v;
+                    }
+                }
+
+                if (objCount === 0) {
+                    sourceJsonInfo.value = { error: 'No usable { "key", "<locale>": value } entries found in this JSON.' };
+                    log('No usable translation entries found in JSON', 'error');
+                    return;
+                }
+
+                const localeArr = [...locales].sort();
+                const build = (file.name.replace(/\.json$/i, '').replace(/[^\w.\-]+/g, '_')) || 'merged';
+                sourceJson.value = { index, noHashIndex, locales: localeArr };
+                sourceJsonInfo.value = {
+                    fileName: file.name, build,
+                    objCount, keyCount: Object.keys(index).length, valueCount, skipped,
+                    locales: localeArr,
+                };
+                log(`Source JSON loaded: ${objCount} entries, ${Object.keys(index).length} keys, ${localeArr.length} locale(s)`, 'success');
+                log(`  Locales: ${localeArr.join(', ')}`, 'info');
+                log(`  Output build folder: ${build} · keys matched hash-insensitively, value falls back to en-US`, 'info');
+                if (skipped) log(`  Skipped ${skipped} entr(y/ies) with no key or no locale value`, 'warn');
+                if (dupKeys) log(`  ${dupKeys} duplicate key entr(y/ies) merged (first value wins per locale)`, 'warn');
+            } catch (err) {
+                log(`Error loading JSON: ${err.message}`, 'error');
+                sourceJsonInfo.value = { error: err.message };
+                sourceJson.value = null;
+            }
+        }
+
         async function generateWorkingFiles() {
-            if (!sourceZip.value || !sourceZipInfo.value || !hasResults.value) return;
+            const isJson = sourceKind.value === 'json';
+            if (isJson ? !sourceJson.value : (!sourceZip.value || !sourceZipInfo.value)) return;
+            if (!hasResults.value) return;
 
             genState.generating = true;
             genState.error = '';
@@ -4165,7 +4295,8 @@ createApp({
             genResult.value = null;
 
             try {
-                const info = sourceZipInfo.value;
+                const info = isJson ? sourceJsonInfo.value : sourceZipInfo.value;
+                const jsonBuild = isJson ? (info.build || 'merged') : null;
                 const outputZip = new JSZip();
                 let totalMatched = 0, totalMissing = 0, outputFiles = 0, totalHashNormalized = 0;
                 const missingDetail = {};
@@ -4176,8 +4307,10 @@ createApp({
                 genState.total = totalTasks;
 
                 log('Starting working files generation...', 'info');
-                log(`  Tickets: ${tickets.length}, total (ticket,lang) tasks: ${totalTasks}`, 'info');
-                if (info.hasGlobalTrunk) {
+                log(`  Source: ${isJson ? 'JSON translation dump' : 'OPUS ZIP package'} · Tickets: ${tickets.length}, total (ticket,lang) tasks: ${totalTasks}`, 'info');
+                if (isJson) {
+                    log(`  JSON locales: ${info.locales.join(', ')} · value falls back to en-US when a locale column is absent`, 'info');
+                } else if (info.hasGlobalTrunk) {
                     log(`  Global trunk path will be merged into every '<lang>/trunk' lookup`, 'info');
                 }
 
@@ -4200,6 +4333,22 @@ createApp({
                 async function getSourceData(lang, build) {
                     const cacheKey = lang + '|' + build;
                     if (cache[cacheKey] !== undefined) return cache[cacheKey];
+
+                    // ── JSON channel: project the per-key locale map down to a
+                    // {key: value} dict for this lang, preferring the lang's own
+                    // column and falling back to the en-US source when absent
+                    // (so an en-US-only dump still resolves every target lang).
+                    if (isJson) {
+                        const { index, noHashIndex } = sourceJson.value;
+                        const pick = (m) => (m[lang] !== undefined ? m[lang] : m['en-US']);
+                        const data = {}, noHash = {};
+                        for (const k in index)        { const v = pick(index[k]);       if (v !== undefined) data[k] = v; }
+                        for (const nk in noHashIndex) { const v = pick(noHashIndex[nk]); if (v !== undefined) noHash[nk] = v; }
+                        const res = Object.keys(data).length ? { data, noHash } : null;
+                        cache[cacheKey] = res;
+                        if (res) log(`    [load] ${lang}: ${Object.keys(data).length} value(s) from JSON`, 'info');
+                        return res;
+                    }
 
                     const paths = [];
                     const langPath = pickPath(info.langBuildMap[lang]?.[build]);
@@ -4238,6 +4387,9 @@ createApp({
                 }
 
                 function getBuildsForLang(lang) {
+                    // JSON channel has a single synthetic build (the file's base
+                    // name); every lang resolves through it (en-US fallback).
+                    if (isJson) return [jsonBuild];
                     const builds = new Set(Object.keys(info.langBuildMap[lang] || {}));
                     if (info.hasGlobalTrunk) builds.add('trunk');
                     return [...builds];
@@ -4832,7 +4984,8 @@ createApp({
             config, state, results, issueMeta, logs, expanded, showToken, sidebarOpen,
             toolSidebarOpen, activeTool, workingFilesEl,
             viewMode, toast, copyLabel, logPanel, testInput, testOutput,
-            sourceZipName, sourceZipInfo, dragOver, zipInput, genState, genResult,
+            sourceZipName, sourceZipInfo, sourceKind, sourceJson, sourceJsonInfo, sourceReady,
+            dragOver, zipInput, genState, genResult,
             hasResults, hasIssues, stats, resultJSON, byLangData, byLangAllKeys, byLangStats,
             byKeyFilter, byKeyOnlyShared, byKeyEntries, byKeyVisible,
             bugOverviewSort, bugOverviewFilters, bugOverviewExpanded,
