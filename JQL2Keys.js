@@ -26,9 +26,12 @@ const PORT = parseInt(process.argv[2], 10) || DEFAULT_PORT;
 // and reusable fragments ("partials") as folders under each storage's _partials
 // subfolder. This lister reads the LOCAL clone only (no network) and reports
 // the two name sets so the SPA can tell, for any extracted TID, whether it is a
-// template, a partial, or both. It prefers the `master` tree via `git ls-tree`
-// (so the answer reflects master regardless of which branch is checked out) and
-// falls back to the working tree on disk when git is unavailable.
+// template, a partial, or both. It reads the working tree on disk (the clone the
+// user actually has, including templates committed on a release branch that is
+// ahead of master, plus uncommitted additions) and unions in the requested git
+// ref's tree (default `master`) so names that live in the ref but are missing on
+// disk still count. git is optional — when unavailable it uses the disk listing
+// alone.
 const DEFAULT_UNS_ROOT = process.env.UNS_REPO_ROOT || 'C:\\Users\\susu82\\SW\\UNS';
 const UNS_STORAGES = ['templateStorage', 'newTemplateStorage'];
 
@@ -95,34 +98,63 @@ async function handleUnsTemplates(reqUrl, res) {
             const rv = await execFileP('git', ['-C', toplevel, 'rev-parse', '--verify', `${ref}^{tree}`]);
             gitOk = !rv.err;
         }
-        const mode = gitOk ? 'git' : 'fs';
-
+        // The local working tree is the source of truth — it is the clone the
+        // user actually synced, and it includes templates committed on the
+        // checked-out branch (which is frequently *ahead* of master, e.g. a
+        // release_xx-y branch) as well as not-yet-committed additions. The
+        // requested git ref (default master) is *unioned* on top so names that
+        // exist in that ref's tree but are missing on disk (sparse / partial
+        // checkouts) still count.
+        //
+        // Previously this read ONLY the master tree via `git ls-tree`, so any
+        // template added on a release branch but not yet merged to master was
+        // reported as "Not found in repo" even though its folder sat right there
+        // on disk. Reading disk ∪ ref fixes that while keeping the ref signal.
         const templates = new Set();
         const partials = new Set();
         const detail = {};
+        let usedGit = false, usedFs = false;
 
         for (const storage of UNS_STORAGES) {
             const storAbs = path.join(base, storage);
             if (!fs.existsSync(storAbs)) { detail[storage] = { present: false }; continue; }
 
-            let tplNames, parNames;
+            // Working tree on disk (always read).
+            const fsTpl = (fsListDirs(storAbs) || []).filter(n => n !== '_partials');
+            const fsPar = fsListDirs(path.join(storAbs, '_partials')) || [];
+            if (fsTpl.length || fsPar.length) usedFs = true;
+
+            // Requested git ref's tree (unioned in when git is available).
+            let gitTpl = [], gitPar = [];
             if (gitOk) {
-                tplNames = await gitListDirs(toplevel, `${ref}:${prefix}${storage}`);
-                parNames = await gitListDirs(toplevel, `${ref}:${prefix}${storage}/_partials`);
-            } else {
-                tplNames = fsListDirs(storAbs) || [];
-                parNames = fsListDirs(path.join(storAbs, '_partials')) || [];
+                gitTpl = (await gitListDirs(toplevel, `${ref}:${prefix}${storage}`)).filter(n => n !== '_partials');
+                gitPar = await gitListDirs(toplevel, `${ref}:${prefix}${storage}/_partials`);
+                if (gitTpl.length || gitPar.length) usedGit = true;
             }
 
-            const tplClean = tplNames.filter(n => n !== '_partials');
-            tplClean.forEach(n => templates.add(n));
-            parNames.forEach(n => partials.add(n));
-            detail[storage] = { present: true, templates: tplClean.length, partials: parNames.length };
+            const tplAll = new Set([...fsTpl, ...gitTpl]);
+            const parAll = new Set([...fsPar, ...gitPar]);
+            tplAll.forEach(n => templates.add(n));
+            parAll.forEach(n => partials.add(n));
+            detail[storage] = {
+                present: true,
+                templates: tplAll.size,
+                partials: parAll.size,
+                fsTemplates: fsTpl.length,
+                gitTemplates: gitTpl.length,
+                // Folders present on disk but absent from the ref's tree —
+                // i.e. local additions not yet on `ref` (commonly: not yet
+                // merged to master). Surfaced for visibility/debugging.
+                diskOnlyTemplates: fsTpl.filter(n => !gitTpl.includes(n)).length,
+            };
         }
+
+        const mode = usedGit && usedFs ? 'git+fs' : (usedGit ? 'git' : 'fs');
 
         const tplArr = [...templates].sort();
         const parArr = [...partials].sort();
         const both = tplArr.filter(n => partials.has(n)).length;
+        const diskOnly = Object.values(detail).reduce((n, d) => n + (d.diskOnlyTemplates || 0), 0);
 
         return sendJson(200, {
             ok: true,
@@ -130,10 +162,11 @@ async function handleUnsTemplates(reqUrl, res) {
             base,
             ref,
             mode,
+            gitAvailable: gitOk,
             storages: detail,
             templates: tplArr,
             partials: parArr,
-            counts: { templates: tplArr.length, partials: parArr.length, both },
+            counts: { templates: tplArr.length, partials: parArr.length, both, diskOnly },
             generatedAt: new Date().toISOString(),
         });
     } catch (e) {
