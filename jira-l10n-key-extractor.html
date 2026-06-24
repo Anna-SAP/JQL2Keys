@@ -992,7 +992,7 @@
                         <span v-if="unsHasRepoData" class="text-[10px] text-gray-400 font-mono ml-0.5 hidden lg:inline"
                             :title="`${unsRepoData.counts.templates} templates · ${unsRepoData.counts.partials} partials · synced ${unsRepoSyncedLabel}`">
                             {{unsRepoData.counts.templates}}/{{unsRepoData.counts.partials}}
-                            <span class="text-gray-300">·</span> {{unsRepoData.mode === 'git' ? unsRepoData.ref : 'wt'}}
+                            <span class="text-gray-300">·</span> {{unsRepoSourceShort}}
                         </span>
                     </div>
                     <button @click="unsShowBrandDict = !unsShowBrandDict"
@@ -1164,10 +1164,14 @@
                         <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                         Synced <span class="font-medium">{{unsRepoSyncedLabel}}</span>
                     </span>
-                    <span>Source: <span class="font-mono font-medium">{{ unsRepoData.mode === 'git' ? (unsRepoData.ref + ' tree (git)') : 'working tree (fs)' }}</span></span>
+                    <span>Source: <span class="font-mono font-medium">{{ unsRepoSourceLabel }}</span></span>
                     <span><span class="font-semibold text-indigo-700">{{unsRepoData.counts.templates}}</span> templates</span>
                     <span><span class="font-semibold text-orange-700">{{unsRepoData.counts.partials}}</span> partials</span>
                     <span v-if="unsRepoData.counts.both"><span class="font-semibold text-purple-700">{{unsRepoData.counts.both}}</span> both</span>
+                    <span v-if="unsRepoData.counts.diskOnly" class="text-amber-700"
+                        :title="`${unsRepoData.counts.diskOnly} template(s) exist on disk but not in the ${unsRepoData.ref || 'master'} tree — recognised from the working tree`">
+                        <span class="font-semibold">{{unsRepoData.counts.diskOnly}}</span> disk-only
+                    </span>
                 </div>
                 <div v-else class="mt-2 text-[11px] text-slate-500 italic">
                     Not synced yet — click <span class="font-medium not-italic">Sync now</span> to label TIDs. Requires this page to be served by JQL2Keys (the local server reads the clone).
@@ -1392,7 +1396,7 @@
                                 class="px-2 py-0.5 rounded font-bold tracking-wider bg-purple-100 text-purple-700 border border-purple-200 transition">BOTH <span class="opacity-70">{{unsClassStats.both}}</span></button>
                             <button v-if="unsClassStats.unknown" @click="unsClassFilter = unsClassFilter==='unknown' ? 'all' : 'unknown'"
                                 :class="unsClassFilter==='unknown' ? 'ring-1 ring-offset-1 ring-gray-400' : ''"
-                                class="px-2 py-0.5 rounded font-medium bg-gray-100 text-gray-500 border border-gray-200 transition" title="TID not found in the repo on the synced ref">? <span class="opacity-70">{{unsClassStats.unknown}}</span></button>
+                                class="px-2 py-0.5 rounded font-medium bg-gray-100 text-gray-500 border border-gray-200 transition" title="TID not found in the local clone — neither on disk nor in the synced ref">? <span class="opacity-70">{{unsClassStats.unknown}}</span></button>
                         </div>
                         <button v-else @click="syncUnsRepo" :disabled="unsRepoLoading" type="button"
                             class="inline-flex items-center gap-1.5 text-[11px] text-indigo-700 bg-indigo-50 border border-indigo-200 rounded px-2 py-1 hover:bg-indigo-100 transition disabled:opacity-50">
@@ -1400,7 +1404,7 @@
                             {{ unsRepoLoading ? 'Syncing…' : 'Sync from UNS repo to split partials vs templates' }}
                         </button>
                         <span v-if="unsHasRepoData" class="text-[10px] text-gray-400">
-                            from <span class="font-mono">{{ unsRepoData.mode === 'git' ? unsRepoData.ref : 'working tree' }}</span> · synced {{unsRepoSyncedLabel}}
+                            from <span class="font-mono">{{ unsRepoSourceLabel }}</span> · synced {{unsRepoSyncedLabel}}
                         </span>
                     </div>
 
@@ -3189,6 +3193,26 @@ createApp({
             if (!d || !d.generatedAt) return '';
             const t = new Date(d.generatedAt);
             return isNaN(t) ? '' : t.toLocaleString();
+        });
+
+        // Which source(s) the synced name sets came from. New syncs report
+        // 'git+fs' (working tree unioned with the requested ref); older cached
+        // payloads only ever stored 'git' or 'fs', so both forms are handled.
+        const unsRepoSourceLabel = computed(() => {
+            const d = unsRepoData.value;
+            if (!d) return '';
+            const ref = d.ref || 'master';
+            if (d.mode === 'git+fs') return `${ref} + working tree`;
+            if (d.mode === 'git')    return `${ref} tree (git)`;
+            return 'working tree (fs)';
+        });
+        const unsRepoSourceShort = computed(() => {
+            const d = unsRepoData.value;
+            if (!d) return '';
+            const ref = d.ref || 'master';
+            if (d.mode === 'git+fs') return `${ref}+wt`;
+            if (d.mode === 'git')    return ref;
+            return 'wt';
         });
 
         // Manual sync: pull the latest names from the LOCAL UNS clone through the
@@ -5013,6 +5037,7 @@ createApp({
             unsRepoRoot, unsRepoRef, unsRepoData, unsRepoLoading, unsRepoError,
             unsShowRepoConfig, unsClassFilter, unsHasRepoData,
             unsClassStats, unsMatrixGroups, unsMatrixRowCount, unsRepoSyncedLabel,
+            unsRepoSourceLabel, unsRepoSourceShort,
             classifyTid, classMeta, syncUnsRepo, clearUnsRepoData,
             addBrandEntry, updateBrandEntry, deleteBrandEntry,
             clearBrandDict, resetBrandDict, exportBrandDict, openBrandImport, handleBrandImport,
