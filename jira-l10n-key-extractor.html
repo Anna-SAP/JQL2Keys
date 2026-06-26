@@ -846,7 +846,7 @@
                                         </span>
                                     </div>
                                 </div>
-                                <p class="text-[10px] text-gray-400 mt-1.5">Green locale = present in extracted results &middot; Keys matched hash-insensitively, value falls back to en-US &middot; Output path: &lt;ticket&gt;/&lt;lang&gt;/{{sourceJsonInfo.build}}/opus_jsons/source.json</p>
+                                <p class="text-[10px] text-gray-400 mt-1.5">Extracted value is <span class="font-semibold text-gray-500">always the en-US source</span> — target-language columns (fr-FR, de-DE, …) are ignored &middot; Keys matched hash-insensitively &middot; Output path: &lt;ticket&gt;/&lt;lang&gt;/{{sourceJsonInfo.build}}/opus_jsons/source.json</p>
                             </template>
                         </div>
 
@@ -4298,7 +4298,8 @@ createApp({
                 };
                 log(`Source JSON loaded: ${objCount} entries, ${Object.keys(index).length} keys, ${localeArr.length} locale(s)`, 'success');
                 log(`  Locales: ${localeArr.join(', ')}`, 'info');
-                log(`  Output build folder: ${build} · keys matched hash-insensitively, value falls back to en-US`, 'info');
+                log(`  Output build folder: ${build} · keys matched hash-insensitively, value is ALWAYS the en-US source (target-language columns ignored)`, 'info');
+                if (!locales.has('en-US')) log(`  ⚠ No en-US column in this dump — every key will be reported as missing (target-language values are never substituted)`, 'warn');
                 if (skipped) log(`  Skipped ${skipped} entr(y/ies) with no key or no locale value`, 'warn');
                 if (dupKeys) log(`  ${dupKeys} duplicate key entr(y/ies) merged (first value wins per locale)`, 'warn');
             } catch (err) {
@@ -4335,7 +4336,7 @@ createApp({
                 log('Starting working files generation...', 'info');
                 log(`  Source: ${isJson ? 'JSON translation dump' : 'OPUS ZIP package'} · Tickets: ${tickets.length}, total (ticket,lang) tasks: ${totalTasks}`, 'info');
                 if (isJson) {
-                    log(`  JSON locales: ${info.locales.join(', ')} · value falls back to en-US when a locale column is absent`, 'info');
+                    log(`  JSON locales: ${info.locales.join(', ')} · extracted value is ALWAYS en-US (target-language columns are ignored)`, 'info');
                 } else if (info.hasGlobalTrunk) {
                     log(`  Global trunk path will be merged into every '<lang>/trunk' lookup`, 'info');
                 }
@@ -4361,21 +4362,35 @@ createApp({
                     if (cache[cacheKey] !== undefined) return cache[cacheKey];
 
                     // ── JSON channel: project the per-key locale map down to a
-                    // {key: value} dict for this lang, preferring the lang's own
-                    // column and falling back to the en-US source when absent
-                    // (so an en-US-only dump still resolves every target lang).
+                    // {key: value} dict. STRICT RULE — the working-files value is
+                    // the baseline for fixing the bug, so it MUST always be the
+                    // en-US source string. Even though the output is foldered by
+                    // target language, the dump carries fr-FR / de-DE / … columns,
+                    // and the Jira ticket may highlight a bad target translation,
+                    // we ignore EVERY target-language column and read only en-US.
+                    // A key with no en-US column is treated as missing rather than
+                    // back-filled from a target language (never emit a target value).
                     if (isJson) {
                         const { index, noHashIndex } = sourceJson.value;
-                        const pick = (m) => (m[lang] !== undefined ? m[lang] : m['en-US']);
+                        const pick = (m) => m['en-US'];
                         const data = {}, noHash = {};
                         for (const k in index)        { const v = pick(index[k]);       if (v !== undefined) data[k] = v; }
                         for (const nk in noHashIndex) { const v = pick(noHashIndex[nk]); if (v !== undefined) noHash[nk] = v; }
                         const res = Object.keys(data).length ? { data, noHash } : null;
                         cache[cacheKey] = res;
-                        if (res) log(`    [load] ${lang}: ${Object.keys(data).length} value(s) from JSON`, 'info');
+                        if (res) log(`    [load] ${lang}: ${Object.keys(data).length} en-US value(s) from JSON`, 'info');
                         return res;
                     }
 
+                    // ── ZIP channel: the package is, by contract, the "英文源包"
+                    // (English source package) — every source.json it contains holds
+                    // en-US strings, foldered by lang/build only so each target lang
+                    // gets its own copy of the SAME en-US source to translate. The
+                    // flat {key: value} files carry no per-locale columns, so reading
+                    // them verbatim already honours the strict en-US-only rule. (If a
+                    // non-conforming ZIP ever held translated values under a <lang>
+                    // folder, this path could leak a target-language value — add an
+                    // en-US guard here if that assumption is ever relaxed.)
                     const paths = [];
                     const langPath = pickPath(info.langBuildMap[lang]?.[build]);
                     if (langPath) paths.push(langPath);
