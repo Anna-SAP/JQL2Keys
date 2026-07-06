@@ -1998,7 +1998,11 @@
                                                 <span v-if="!r.task_name && !r.task_id" class="text-gray-300">—</span>
                                             </td>
                                             <td class="px-3 py-2 whitespace-nowrap">
-                                                <button v-if="r.merge_request_iid != null" @click="copyText(String(r.merge_request_iid))"
+                                                <a v-if="r.merge_request_iid != null && r.mrUrl" :href="r.mrUrl"
+                                                    target="_blank" rel="noopener noreferrer"
+                                                    class="inline-flex items-center gap-0.5 font-mono text-[11px] text-emerald-700 hover:underline"
+                                                    :title="'Open ' + r.mrUrl">MR#{{r.merge_request_iid}}<svg class="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg></a>
+                                                <button v-else-if="r.merge_request_iid != null" @click="copyText(String(r.merge_request_iid))"
                                                     class="font-mono text-[11px] text-emerald-700 hover:underline"
                                                     :title="'Copy MR iid'">MR#{{r.merge_request_iid}}</button>
                                                 <div v-if="r.release" class="text-[10px] text-gray-500 mt-0.5">{{r.release}}</div>
@@ -2068,7 +2072,10 @@
                                                         :title="'Click to copy'">{{row.text}}</button>
                                                     <div v-if="row.diverged && bugDiffOpen(card.key, row.locale)" class="mt-2 space-y-1.5 border-l-2 border-amber-200 pl-2">
                                                         <div v-for="(vv, vi) in row.variants" :key="vi" class="text-[11px]">
-                                                            <span :class="['px-1 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider mr-1', bugSourceBadgeClass(vv.source)]">{{vv.label}}</span>
+                                                            <a v-if="vv.mrUrl" :href="vv.mrUrl" target="_blank" rel="noopener noreferrer"
+                                                                :class="['px-1 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider mr-1 hover:underline', bugSourceBadgeClass(vv.source)]"
+                                                                :title="'Open ' + vv.mrUrl">{{vv.label}}</a>
+                                                            <span v-else :class="['px-1 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider mr-1', bugSourceBadgeClass(vv.source)]">{{vv.label}}</span>
                                                             <span class="text-gray-600">{{vv.text}}</span>
                                                         </div>
                                                     </div>
@@ -4757,6 +4764,41 @@ createApp({
         // distils them into a matrix and parks the translations in a second zone.
         const BUG_META_FIELDS = ['source', 'task_id', 'task_name', 'project_id', 'base_ref', 'head_ref', 'created_at', 'merge_request_iid', 'release'];
 
+        // GitLab projects on git.ringcentral.com whose MR pages are reachable —
+        // MR# badges become links only for these paths; anything else (e.g. the
+        // copilot-platform repos) stays a plain copy button.
+        const BUG_GITLAB_HOST = 'https://git.ringcentral.com';
+        const BUG_MR_PROJECTS = new Set([
+            'admin-web/backend', 'admin-web/frontend',
+            'common/awp', 'common/clw', 'common/maa', 'common/uns',
+            'es/express-setup-nova-next-generation', 'es/express-setup-renaissance',
+            'iva/agent-service', 'iva/iva-ui',
+            'platform/i18n',
+            'web-modules/web-modules-core',
+            'web/bui', 'web/chc', 'web/cic', 'web/i18n', 'web/jedi',
+            'web/npa', 'web/push-to-talk', 'web/stc', 'web/web',
+        ]);
+
+        // Resolve a source record to its GitLab MR URL. The project path comes
+        // from project_id when present, otherwise from task_name — MR records
+        // are named like "MR#40734 web/web", so any slash-bearing token is a
+        // candidate. Unknown projects yield '' (no link).
+        function bugMrUrl(rec) {
+            if (rec.merge_request_iid == null) return '';
+            const candidates = [];
+            if (rec.project_id) candidates.push(String(rec.project_id));
+            for (const tok of String(rec.task_name || '').split(/\s+/)) {
+                if (tok.includes('/')) candidates.push(tok);
+            }
+            for (const c of candidates) {
+                const p = c.replace(/^\/+|\/+$/g, '').toLowerCase();
+                if (BUG_MR_PROJECTS.has(p)) {
+                    return BUG_GITLAB_HOST + '/' + p + '/-/merge_requests/' + rec.merge_request_iid;
+                }
+            }
+            return '';
+        }
+
         function stripBugCodeFences(s) {
             const t = String(s || '').trim();
             const fence = t.match(/^```[a-zA-Z0-9]*\s*\n([\s\S]*?)\n?```$/);
@@ -4816,16 +4858,21 @@ createApp({
             if (Array.isArray(unit._all_sources)) rawSources = unit._all_sources.filter(s => s && typeof s === 'object' && !Array.isArray(s));
             else if (primary) rawSources = [primary];
 
-            const rows = rawSources.map(s => {
+            // The Scan entry in _all_sources usually drops project_id/base_ref/
+            // head_ref that live on the top-level _source — graft them back by
+            // matching task_id (or when there is a single source).
+            const mergeWithPrimary = (s) => {
                 const merged = { ...s };
-                // The Scan entry in _all_sources usually drops project_id/base_ref/
-                // head_ref that live on the top-level _source — graft them back by
-                // matching task_id (or when there is a single source).
                 if (primary && (rawSources.length === 1 || (s.task_id != null && primary.task_id === s.task_id))) {
                     for (const f of BUG_META_FIELDS) {
                         if (merged[f] == null && primary[f] != null) merged[f] = primary[f];
                     }
                 }
+                return merged;
+            };
+
+            const rows = rawSources.map(s => {
+                const merged = mergeWithPrimary(s);
                 const wl = Array.isArray(s.won_locales) ? s.won_locales : null;
                 const str = (f) => (merged[f] != null ? String(merged[f]) : '');
                 return {
@@ -4833,6 +4880,7 @@ createApp({
                     project_id: str('project_id'), base_ref: str('base_ref'), head_ref: str('head_ref'),
                     created_at: str('created_at'), release: str('release'),
                     merge_request_iid: merged.merge_request_iid != null ? merged.merge_request_iid : null,
+                    mrUrl: bugMrUrl(merged),
                     wonLocales: wl ? wl.length : null,
                     wonLocalesList: wl ? wl.join(', ') : '',
                 };
@@ -4846,6 +4894,7 @@ createApp({
                 label: s.merge_request_iid != null ? ('MR#' + s.merge_request_iid)
                      : (s.source != null ? String(s.source) : ('src ' + (i + 1))),
                 source: s.source != null ? String(s.source) : '',
+                mrUrl: bugMrUrl(mergeWithPrimary(s)),
                 translations: (s.translations && typeof s.translations === 'object') ? s.translations : {},
             }));
 
@@ -4926,7 +4975,7 @@ createApp({
                     const variants = [];
                     for (const ps of u.perSource) {
                         const t = ps.translations[loc];
-                        if (typeof t === 'string') variants.push({ label: ps.label, source: ps.source, text: t });
+                        if (typeof t === 'string') variants.push({ label: ps.label, source: ps.source, mrUrl: ps.mrUrl, text: t });
                     }
                     const current = (typeof u.topTrans[loc] === 'string') ? u.topTrans[loc]
                                   : (variants[0] ? variants[0].text : '');
