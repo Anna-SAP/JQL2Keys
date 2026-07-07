@@ -4,7 +4,11 @@
     {
       "name": "uns-assistant",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["JQL2Keys.js", "3010"],
+      "runtimeArgs": [
+        "JQL2Keys.js",
+        "3010",
+        "--no-open"
+      ],
       "port": 3010
     }
   ]

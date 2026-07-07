@@ -2048,6 +2048,10 @@
                         <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">head_ref</code> —
                         into a scannable <span class="text-teal-700 font-semibold">matrix</span>, and keeps the
                         <span class="text-teal-700 font-semibold">translations</span> in a separate zone for review.
+                        UNS keys are additionally resolved against the l10n tool's live resource-path map to show which
+                        storage tree each key was built from —
+                        <span class="text-sky-700 font-semibold">templateStorage</span> or
+                        <span class="text-violet-700 font-semibold">newTemplateStorage</span>.
                     </p>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
@@ -2116,6 +2120,30 @@
                 </div>
 
                 <template v-else>
+                    <!-- UNS storage-map strip — which storage tree each UNS key was built from -->
+                    <div v-if="bugHasUnsKeys" class="bg-white border border-gray-200 rounded-lg px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+                        <div class="flex items-center gap-2 min-w-0 flex-wrap">
+                            <svg class="w-4 h-4 text-violet-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+                            <span class="text-xs font-semibold text-gray-700">UNS storage map</span>
+                            <template v-if="bugPathMap">
+                                <span class="text-[11px] text-gray-400" :title="'Source: ' + bugPathMap.sourceUrl">{{bugPathMap.count}} resources · synced {{bugPathMapSyncedLabel}}</span>
+                                <span class="text-[11px] text-gray-300">·</span>
+                                <span class="text-[11px] text-gray-500"><span class="font-semibold text-violet-700 tabular-nums">{{bugStorageStats.newStorage}}</span> newTemplateStorage</span>
+                                <span class="text-[11px] text-gray-500"><span class="font-semibold text-sky-700 tabular-nums">{{bugStorageStats.oldStorage}}</span> templateStorage</span>
+                                <span v-if="bugStorageStats.unmapped" class="text-[11px] text-amber-600"
+                                    :title="'UNS keys whose hash is not present in the map synced ' + bugPathMapSyncedLabel + ' — Refresh to re-check'">{{bugStorageStats.unmapped}} not in map</span>
+                            </template>
+                            <span v-else-if="bugPathMapLoading" class="text-[11px] text-gray-500">loading resource-path map…</span>
+                            <span v-else class="text-[11px] text-gray-500">resolves each UNS key to templateStorage / newTemplateStorage</span>
+                            <span v-if="bugPathMapError" class="text-[11px] text-red-600">{{bugPathMapError}}</span>
+                        </div>
+                        <button @click="syncBugPathMap(true)" :disabled="bugPathMapLoading" type="button"
+                            class="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0">
+                            <svg class="w-3 h-3" :class="bugPathMapLoading ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            {{bugPathMapLoading ? 'Syncing…' : (bugPathMap ? 'Refresh' : 'Sync now')}}
+                        </button>
+                    </div>
+
                     <!-- Stat cards -->
                     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                         <div class="bg-white border border-gray-200 rounded-lg p-3">
@@ -2163,7 +2191,7 @@
                         </div>
                         <div class="relative flex-1 min-w-[200px] max-w-xs">
                             <svg class="w-4 h-4 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                            <input v-model="bugFilter" type="text" placeholder="filter key, task, source, release…"
+                            <input v-model="bugFilter" type="text" placeholder="filter key, task, source, storage folder…"
                                 class="w-full pl-8 pr-2 py-1.5 text-xs border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent">
                         </div>
                     </div>
@@ -2183,6 +2211,18 @@
                                         :title="'Copy key — ' + grp.key">{{grp.key}}</button>
                                     <div class="flex items-center gap-2 mt-1 flex-wrap">
                                         <span v-if="grp.leaf" class="text-[10px] font-semibold text-gray-500">{{grp.leaf}}</span>
+                                        <template v-if="grp.storage">
+                                            <a v-if="grp.storage.known && grp.storage.folder" :href="grp.storage.gitUrl"
+                                                target="_blank" rel="noopener noreferrer"
+                                                :class="['text-[9px] px-1.5 py-0.5 rounded font-bold tracking-wider inline-flex items-center gap-0.5 hover:underline', bugStorageBadgeClass(grp.storage.folder)]"
+                                                :title="'Open on GitLab — ' + grp.storage.relPath">{{grp.storage.folder}}<svg class="w-2 h-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg></a>
+                                            <button v-if="grp.storage.known" @click="copyText(grp.storage.relPath)" type="button"
+                                                class="text-[10px] text-gray-400 hover:text-teal-700 font-mono truncate max-w-[26rem] text-left"
+                                                :title="'Copy path — ' + grp.storage.relPath">{{grp.storage.relPath}}</button>
+                                            <span v-else-if="bugPathMap && !bugPathMapLoading"
+                                                class="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider"
+                                                :title="'This hash is not present in the map synced ' + bugPathMapSyncedLabel + ' — Refresh to re-check'">not in storage map</span>
+                                        </template>
                                         <span v-if="grp.sourceFile" class="text-[10px] text-gray-400 font-mono">{{grp.sourceFile}}</span>
                                         <span v-if="grp.inconsistencies && grp.inconsistencies !== 'no'"
                                             class="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">inconsistent</span>
@@ -2262,6 +2302,15 @@
                                         :title="'Copy key — ' + card.key">{{card.key}}</button>
                                     <div class="flex items-center gap-2 mt-1 flex-wrap">
                                         <span v-if="card.leaf" class="text-[10px] font-semibold text-gray-500">{{card.leaf}}</span>
+                                        <template v-if="card.storage">
+                                            <a v-if="card.storage.known && card.storage.folder" :href="card.storage.gitUrl"
+                                                target="_blank" rel="noopener noreferrer"
+                                                :class="['text-[9px] px-1.5 py-0.5 rounded font-bold tracking-wider inline-flex items-center gap-0.5 hover:underline', bugStorageBadgeClass(card.storage.folder)]"
+                                                :title="'Open on GitLab — ' + card.storage.relPath">{{card.storage.folder}}<svg class="w-2 h-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg></a>
+                                            <span v-else-if="card.storage.known === false && bugPathMap && !bugPathMapLoading"
+                                                class="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider"
+                                                :title="'This hash is not present in the map synced ' + bugPathMapSyncedLabel + ' — Refresh to re-check'">not in storage map</span>
+                                        </template>
                                         <span class="text-[10px] text-gray-400 tabular-nums">{{card.locales.length}} locale{{card.locales.length === 1 ? '' : 's'}}</span>
                                         <span v-if="card.divergedCount" class="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider"
                                             :title="card.divergedCount + ' locale(s) differ across sources'">{{card.divergedCount}} diverge</span>
@@ -2653,6 +2702,25 @@ createApp({
         const bugFilter  = ref('');
         const bugDiffExpanded = ref(new Set()); // `${key} ${locale}` entries with the source-diff panel open
 
+        // ─── UNS storage map (Bug Fixing Helper) ─
+        // hash → repo path slice of the l10n tool's resource-path map, pulled
+        // through the local server (the l10n tool sends no CORS headers).
+        // Cached in localStorage so a VPN-less session still shows the
+        // last-known storage folders together with their sync timestamp.
+        function loadBugPathMap() {
+            try {
+                const raw = localStorage.getItem('uns_bugPathMap');
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                if (parsed && parsed.paths && typeof parsed.paths === 'object' && !Array.isArray(parsed.paths)) return parsed;
+            } catch {}
+            return null;
+        }
+        const bugPathMap        = ref(loadBugPathMap()); // { paths, count, fetchedAt, lastModified, sourceUrl } | null
+        const bugPathMapLoading = ref(false);
+        const bugPathMapError   = ref('');
+        const BUG_PATHMAP_STALE_MS = 60 * 60 * 1000; // auto-refresh cadence while UNS keys are on screen
+
         // ─── UNS Bug Fixing Delivery state ───────
         const deliveryInput  = ref(localStorage.getItem('uns_deliveryInput') || '');
         const deliveryFormat = ref(localStorage.getItem('uns_deliveryFormat') || 'jira'); // 'jira' | 'markdown' | 'plain'
@@ -2715,6 +2783,32 @@ createApp({
                 key: 'RingCentral.pushToTalk.9c831be93fef0ab9dbd59a58c056b82f.app.common.SERVER_API_ERRORS.BULK_ADD_CHANNELS.TEMPLATE_CONCURRENCY_LIMIT_REACHED',
                 source: 'merged_translations_CORE_20260618.json',
                 'en-US': 'Sorry, the service is temporarily unavailable. Please try again later.',
+            },
+            // Two UNS units sharing one template name but built from different
+            // storage trees — their hashes are real, so the storage-folder
+            // badges light up once the resource-path map is synced
+            // (830eef… → templateStorage, bed4af… → newTemplateStorage).
+            {
+                key: 'RingCentral.uns.830eef3cf1b1a8c7ca11877216e4da64.mapClientSecretExpired__email_html__1210__en_US',
+                source: 'MergedTranslations_CORE_FULL_20260707-094003.json',
+                _source: {
+                    source: 'Scan', task_id: '7f3c2a9e-5d14-4b6a-8e07-c1a92d63f4b8',
+                    task_name: 'uns scan', project_id: 'common/uns',
+                    base_ref: 'master', head_ref: '26-3_L10n',
+                    created_at: '2026-07-01T03:12:44.102938',
+                },
+                'en-US': 'Action required - <x id="x169"/> for Teams Embedded App connection disconnected',
+            },
+            {
+                key: 'RingCentral.uns.bed4af9ebc891ffe8d7e28543e389e40.mapClientSecretExpired__email_html__1210__en_US',
+                source: 'MergedTranslations_CORE_FULL_20260707-094003.json',
+                _source: {
+                    source: 'Scan', task_id: '7f3c2a9e-5d14-4b6a-8e07-c1a92d63f4b8',
+                    task_name: 'uns scan', project_id: 'common/uns',
+                    base_ref: 'master', head_ref: '26-3_L10n',
+                    created_at: '2026-07-01T03:12:44.102938',
+                },
+                'en-US': 'Action required - <x id="x379"/> for Teams Embedded App connection disconnected',
             },
         ], null, 2);
 
@@ -2901,7 +2995,7 @@ createApp({
         // ═══════════════════════════════════════
         //  UNS — App-level computeds
         // ═══════════════════════════════════════
-        const appVersion = '1.8.0';
+        const appVersion = '1.9.0';
         const appHostLabel = computed(() => {
             if (typeof location === 'undefined' || !location.host) return 'standalone';
             return location.host;
@@ -5071,6 +5165,116 @@ createApp({
             return '';
         }
 
+        // ── UNS storage-folder resolution ──
+        // UNS keys embed the md5 of their source template as the segment right
+        // after "uns": RingCentral.uns.<hash>.<template>__<kind>__<brand>__<loc>.
+        // The l10n tool's resource-path map resolves hash → repo path, whose
+        // second segment names the storage folder the key was built from
+        // (templateStorage vs newTemplateStorage) — the bit that matters when
+        // the same template exists in both trees.
+        const BUG_PATHMAP_SOURCE_URL = 'https://l10n-tool.int.rclabenv.com/resources/caches/resource-path.map.json';
+        const BUG_UNS_GIT_BASE = BUG_GITLAB_HOST + '/common/uns/-/blob/master/';
+
+        function bugUnsHash(key) {
+            const m = /(?:^|\.)uns\.([0-9a-fA-F]{32})(?=\.|$)/.exec(String(key || ''));
+            return m ? m[1].toLowerCase() : '';
+        }
+
+        // null for non-UNS keys (no storage chip at all); { known: false } for
+        // UNS keys whose hash is absent from the synced map.
+        function bugStorageInfo(key) {
+            const hash = bugUnsHash(key);
+            if (!hash) return null;
+            const map = bugPathMap.value;
+            const path = map && map.paths ? map.paths[hash] : undefined;
+            if (typeof path !== 'string') return { hash, known: false, folder: '', relPath: '', gitUrl: '' };
+            const relPath = path.replace(/^uns\//, '');
+            const fm = path.match(/\/(newTemplateStorage|templateStorage)\//);
+            return {
+                hash,
+                known: true,
+                folder: fm ? fm[1] : '',
+                relPath,
+                gitUrl: BUG_UNS_GIT_BASE + relPath,
+            };
+        }
+
+        function bugStorageBadgeClass(folder) {
+            if (folder === 'newTemplateStorage') return 'bg-violet-100 text-violet-700';
+            if (folder === 'templateStorage')    return 'bg-sky-100 text-sky-700';
+            return 'bg-gray-100 text-gray-600';
+        }
+
+        // Sync the UNS hash → path slice through the local server; fall back to
+        // pulling the raw map via the generic /proxy when the server predates
+        // the dedicated endpoint. `force` bypasses the freshness check (manual
+        // Refresh) — auto-syncs reuse a map younger than BUG_PATHMAP_STALE_MS.
+        function extractUnsPathSlice(rawMap) {
+            const uns = rawMap && rawMap.RingCentral && rawMap.RingCentral.uns;
+            if (!uns || typeof uns !== 'object') throw new Error('map has no RingCentral.uns section');
+            const paths = {};
+            for (const [k, v] of Object.entries(uns)) {
+                if (/^[0-9a-f]{32}$/i.test(k) && typeof v === 'string') paths[k.toLowerCase()] = v;
+            }
+            return paths;
+        }
+
+        let bugPathMapLastAttempt = 0; // throttles auto-sync retries after a failure
+        async function syncBugPathMap(force) {
+            if (bugPathMapLoading.value) return;
+            if (!force) {
+                const cur = bugPathMap.value;
+                if (cur && cur.fetchedAt
+                    && Date.now() - new Date(cur.fetchedAt).getTime() < BUG_PATHMAP_STALE_MS) return;
+                if (Date.now() - bugPathMapLastAttempt < 60 * 1000) return;
+            }
+            bugPathMapLastAttempt = Date.now();
+            bugPathMapLoading.value = true;
+            bugPathMapError.value = '';
+            try {
+                const apiBase = (config.proxyUrl || location.origin || '').replace(/\/+$/, '');
+                let paths, lastModified = '';
+                const resp = await fetch(`${apiBase}/uns-resource-paths${force ? '?refresh=1' : ''}`);
+                if (resp.status === 404) {
+                    // Older server without the endpoint — slice the raw map here.
+                    const raw = await fetch(`${apiBase}/proxy?url=${encodeURIComponent(BUG_PATHMAP_SOURCE_URL)}`);
+                    if (!raw.ok) throw new Error(`HTTP ${raw.status} fetching the resource-path map via /proxy`);
+                    paths = extractUnsPathSlice(await raw.json());
+                } else {
+                    let data;
+                    try { data = await resp.json(); }
+                    catch { throw new Error(`Unexpected response (HTTP ${resp.status}). Is JQL2Keys serving this page?`); }
+                    if (!resp.ok || !data.ok) throw new Error(data && data.error ? data.error : `HTTP ${resp.status}`);
+                    paths = (data.paths && typeof data.paths === 'object') ? data.paths : {};
+                    lastModified = data.lastModified || '';
+                }
+                const payload = {
+                    paths,
+                    count: Object.keys(paths).length,
+                    lastModified,
+                    sourceUrl: BUG_PATHMAP_SOURCE_URL,
+                    fetchedAt: new Date().toISOString(),
+                };
+                bugPathMap.value = payload;
+                try { localStorage.setItem('uns_bugPathMap', JSON.stringify(payload)); } catch {}
+                // Auto-syncs stay silent (the strip's "synced …" label is the
+                // signal) — every toast in this app confirms a user action.
+                if (force) showToast(`UNS storage map synced — ${payload.count} resources`);
+            } catch (e) {
+                bugPathMapError.value = e.message || String(e);
+                if (force) showToast('Storage map sync failed');
+            } finally {
+                bugPathMapLoading.value = false;
+            }
+        }
+
+        const bugPathMapSyncedLabel = computed(() => {
+            const m = bugPathMap.value;
+            if (!m || !m.fetchedAt) return '';
+            const t = new Date(m.fetchedAt);
+            return isNaN(t) ? '' : t.toLocaleString();
+        });
+
         function stripBugCodeFences(s) {
             const t = String(s || '').trim();
             const fence = t.match(/^```[a-zA-Z0-9]*\s*\n([\s\S]*?)\n?```$/);
@@ -5193,6 +5397,17 @@ createApp({
         function bugUnitMatches(u, q) {
             if (!q) return true;
             const hay = [u.key, u.sourceFile];
+            const storage = bugStorageInfo(u.key);
+            if (storage) {
+                // "templateStorage" is a substring of "newTemplateStorage", so a
+                // query naming a folder exactly must match by equality — plain
+                // substring search could never isolate the old tree.
+                if (q === 'templatestorage' || q === 'newtemplatestorage') {
+                    if ((storage.folder || '').toLowerCase() === q) return true;
+                } else {
+                    hay.push(storage.folder, storage.relPath);
+                }
+            }
             for (const r of u.rows) hay.push(r.source, r.task_name, r.task_id, r.release, r.project_id, r.base_ref, r.head_ref);
             return hay.filter(Boolean).some(s => s.toLowerCase().includes(q));
         }
@@ -5219,6 +5434,33 @@ createApp({
             return { units: us.length, keys: keys.size, sourceRecords, tasks: tasks.size, mrs: mrs.size, locales: locales.size, withoutMeta };
         });
 
+        const bugHasUnsKeys = computed(() => bugUnits.value.some(u => bugUnsHash(u.key)));
+
+        // Storage-folder tally over the distinct UNS keys on screen — feeds the
+        // status strip and recomputes as the map arrives.
+        const bugStorageStats = computed(() => {
+            const st = { uns: 0, newStorage: 0, oldStorage: 0, unmapped: 0 };
+            const seen = new Set();
+            for (const u of bugUnits.value) {
+                if (!bugUnsHash(u.key) || seen.has(u.key)) continue;
+                seen.add(u.key);
+                st.uns++;
+                const info = bugStorageInfo(u.key);
+                if (!info.known) st.unmapped++;
+                else if (info.folder === 'newTemplateStorage') st.newStorage++;
+                else if (info.folder === 'templateStorage') st.oldStorage++;
+            }
+            return st;
+        });
+
+        // Any UNS key on screen pulls the map automatically. Watching bugUnits
+        // (not the boolean bugHasUnsKeys) re-checks staleness on every input
+        // change — a boolean computed would only fire on false→true, so
+        // replacing one UNS dump with another mid-session would never re-sync.
+        // syncBugPathMap itself no-ops while the map is fresh or a failed
+        // attempt is younger than a minute, so this stays cheap per keystroke.
+        watch(bugUnits, (us) => { if (us.some(u => bugUnsHash(u.key))) syncBugPathMap(false); }, { immediate: true });
+
         const bugMetaGroups = computed(() => {
             const q = bugFilter.value.trim().toLowerCase();
             return bugUnits.value
@@ -5228,6 +5470,7 @@ createApp({
                     leaf: u.key.includes('.') ? u.key.split('.').pop() : '',
                     sourceFile: u.sourceFile,
                     inconsistencies: u.inconsistencies,
+                    storage: bugStorageInfo(u.key),
                     rows: u.rows,
                 }));
         });
@@ -5261,6 +5504,7 @@ createApp({
                 out.push({
                     key: u.key,
                     leaf: u.key.includes('.') ? u.key.split('.').pop() : '',
+                    storage: bugStorageInfo(u.key),
                     locales: sorted, rows, divergedCount,
                     json: JSON.stringify(cur, null, 2),
                 });
@@ -5283,15 +5527,18 @@ createApp({
         }
 
         function bugMetaCsvText() {
-            const header = ['key', 'source', 'task_name', 'task_id', 'project_id', 'base_ref', 'head_ref', 'merge_request_iid', 'release', 'created_at', 'won_locales'];
+            const header = ['key', 'storage_folder', 'resource_path', 'source', 'task_name', 'task_id', 'project_id', 'base_ref', 'head_ref', 'merge_request_iid', 'release', 'created_at', 'won_locales'];
             const esc = (v) => {
                 const s = (v == null) ? '' : String(v);
                 return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
             };
             const lines = [header.join(',')];
             for (const u of bugUnits.value) {
+                const storage = bugStorageInfo(u.key);
+                const folder  = storage && storage.known ? storage.folder : '';
+                const relPath = storage && storage.known ? storage.relPath : '';
                 for (const r of u.rows) {
-                    lines.push([u.key, r.source, r.task_name, r.task_id, r.project_id, r.base_ref, r.head_ref,
+                    lines.push([u.key, folder, relPath, r.source, r.task_name, r.task_id, r.project_id, r.base_ref, r.head_ref,
                                 (r.merge_request_iid == null ? '' : r.merge_request_iid), r.release, r.created_at,
                                 (r.wonLocales == null ? '' : r.wonLocales)].map(esc).join(','));
                 }
@@ -5307,6 +5554,12 @@ createApp({
             if (!bugStats.value.sourceRecords) return;
             const data = bugUnits.value.filter(u => u.rows.length).map(u => {
                 const out = { key: u.key };
+                const storage = bugStorageInfo(u.key);
+                if (storage && storage.known) {
+                    if (storage.folder) out.storage_folder = storage.folder;
+                    out.resource_path = storage.relPath;
+                    out.git_url = storage.gitUrl;
+                }
                 if (u.sourceFile) out.source_file = u.sourceFile;
                 if (u.inconsistencies) out.inconsistencies_in_new = u.inconsistencies;
                 out.sources = u.rows.map(r => {
@@ -5551,6 +5804,9 @@ createApp({
             bugMetaGroups, bugTransCards,
             fmtBugDate, bugSourceBadgeClass, toggleBugDiff, bugDiffOpen,
             loadBugSample, copyBugMetaCsv, exportBugMetaJson,
+            bugHasUnsKeys, bugStorageStats, bugStorageBadgeClass,
+            bugPathMap, bugPathMapLoading, bugPathMapError,
+            bugPathMapSyncedLabel, syncBugPathMap,
             // UNS Bug Fixing Delivery
             deliveryInput, deliveryFormat, deliveryLangs, deliverySkipped,
             deliveryParseError, deliveryStats, deliveryText,

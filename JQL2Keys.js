@@ -16,7 +16,11 @@ const path = require('path');
 const { exec, execFile } = require('child_process');
 
 const DEFAULT_PORT = 3001;
-const PORT = parseInt(process.argv[2], 10) || DEFAULT_PORT;
+// The port is the first non-flag argument, so flags may appear in any order
+// (`JQL2Keys.js --no-open 3010` must not swallow the port).
+const PORT = parseInt(process.argv.slice(2).find(a => !a.startsWith('--')), 10) || DEFAULT_PORT;
+// Suppress the auto-opened browser tab (useful for tests / headless runs).
+const NO_OPEN = process.argv.includes('--no-open') || process.env.JQL2KEYS_NO_OPEN === '1';
 
 // ═══════════════════════════════════════
 //  UNS template/partial classifier
@@ -175,6 +179,87 @@ async function handleUnsTemplates(reqUrl, res) {
 }
 
 // ═══════════════════════════════════════
+//  UNS resource-path map (storage-folder resolver)
+// ═══════════════════════════════════════
+// The l10n tool publishes a bidirectional resource map (repo path ↔ md5 hash)
+// for every scanned project. UNS translation keys embed that hash as the
+// segment right after "uns" (RingCentral.uns.<hash>.<template>…), so
+// hash → path tells which storage folder a key was built from —
+// templateStorage vs newTemplateStorage — the bit that matters when the same
+// template exists in both trees. The map has no CORS headers, so the SPA
+// cannot fetch it directly; this endpoint pulls the full map (~3 MB, internal
+// network / VPN required), keeps only the UNS hash → path half, and caches
+// the slice briefly so repeated syncs stay cheap.
+const L10N_RESOURCE_MAP_URL = process.env.L10N_RESOURCE_MAP_URL
+    || 'https://l10n-tool.int.rclabenv.com/resources/caches/resource-path.map.json';
+const RESOURCE_MAP_TTL_MS = 5 * 60 * 1000;
+let resourceMapCache = null; // { at, body } — body is the ready-to-send JSON string
+
+function fetchUrl(urlStr, timeoutMs) {
+    return new Promise((resolve, reject) => {
+        const u = new URL(urlStr);
+        const lib = u.protocol === 'https:' ? https : http;
+        const req = lib.get(
+            {
+                hostname: u.hostname,
+                port: u.port || (u.protocol === 'https:' ? 443 : 80),
+                path: u.pathname + u.search,
+                headers: { 'User-Agent': 'JQL2Keys/1.0', Accept: 'application/json' },
+            },
+            (r) => {
+                if (r.statusCode !== 200) {
+                    r.resume();
+                    return reject(new Error(`HTTP ${r.statusCode} from ${u.hostname}`));
+                }
+                const chunks = [];
+                r.on('data', (c) => chunks.push(c));
+                r.on('end', () => resolve({ body: Buffer.concat(chunks).toString('utf8'), headers: r.headers }));
+                r.on('error', reject);
+            }
+        );
+        req.on('error', reject);
+        req.setTimeout(timeoutMs, () => req.destroy(new Error(`Timeout after ${Math.round(timeoutMs / 1000)}s`)));
+    });
+}
+
+async function handleUnsResourcePaths(reqUrl, res) {
+    const force = reqUrl.searchParams.get('refresh') === '1';
+    if (!force && resourceMapCache && Date.now() - resourceMapCache.at < RESOURCE_MAP_TTL_MS) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(resourceMapCache.body);
+    }
+    try {
+        const { body, headers } = await fetchUrl(L10N_RESOURCE_MAP_URL, 30000);
+        const map = JSON.parse(body);
+        const uns = map && map.RingCentral && map.RingCentral.uns;
+        if (!uns || typeof uns !== 'object') throw new Error('map has no RingCentral.uns section');
+        const paths = {};
+        for (const [k, v] of Object.entries(uns)) {
+            if (/^[0-9a-f]{32}$/i.test(k) && typeof v === 'string') paths[k.toLowerCase()] = v;
+        }
+        const payload = JSON.stringify({
+            ok: true,
+            project: 'uns',
+            count: Object.keys(paths).length,
+            sourceUrl: L10N_RESOURCE_MAP_URL,
+            lastModified: headers['last-modified'] || '',
+            generatedAt: new Date().toISOString(),
+            paths,
+        });
+        resourceMapCache = { at: Date.now(), body: payload };
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(payload);
+    } catch (e) {
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+            ok: false,
+            error: `Could not load the l10n resource-path map (${e.message}). `
+                 + 'The l10n tool lives on the internal network — check the VPN connection.',
+        }));
+    }
+}
+
+// ═══════════════════════════════════════
 //  Load HTML asset
 // ═══════════════════════════════════════
 function loadHTML() {
@@ -232,6 +317,11 @@ const server = http.createServer((req, res) => {
     // ── UNS template/partial lister (reads the local UNS clone) ──
     if (reqUrl.pathname === '/uns-templates') {
         return handleUnsTemplates(reqUrl, res);
+    }
+
+    // ── UNS resource-path map (hash → storage folder, via the l10n tool) ──
+    if (reqUrl.pathname === '/uns-resource-paths') {
+        return handleUnsResourcePaths(reqUrl, res);
     }
 
     // ── Jira Proxy ──
@@ -302,6 +392,7 @@ const server = http.createServer((req, res) => {
 //  Browser launcher
 // ═══════════════════════════════════════
 function openInBrowser(url) {
+    if (NO_OPEN) return;
     const cmd = process.platform === 'win32' ? `start "" "${url}"`
               : process.platform === 'darwin' ? `open "${url}"`
               : `xdg-open "${url}"`;
