@@ -1391,6 +1391,12 @@
                                 <span class="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-mono font-bold">SUBJ</span>
                                 <span class="text-gray-500">subject</span>
                             </span>
+                            <button @click="copyUnsMatrixJira" type="button" :disabled="!unsMatrixRowCount"
+                                class="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                title="Copy the visible matrix as a JIRA wiki table — paste into a ticket comment">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                                Copy for JIRA
+                            </button>
                         </div>
                     </div>
 
@@ -1454,6 +1460,11 @@
                                                     class="px-1 py-0.5 rounded text-[9px] font-bold leading-none shrink-0" :class="grp.chip"
                                                     :title="grp.label">{{grp.short}}</span>
                                                 <span :class="tid === unsSearch.trim() ? 'bg-yellow-100 px-1 rounded' : ''">{{tid}}</span>
+                                                <button @click="copyText(tid)" type="button"
+                                                    class="p-0.5 rounded text-gray-300 hover:text-indigo-600 hover:bg-indigo-50 transition shrink-0"
+                                                    :title="'Copy Template ID — ' + tid">
+                                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                                                </button>
                                             </div>
                                         </td>
                                         <td v-for="b in unsMatrix.brands" :key="b" class="px-2 py-1.5 text-center align-middle">
@@ -1484,6 +1495,11 @@
                         <div class="px-4 py-2 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between flex-wrap gap-2">
                             <div class="flex items-center gap-2 min-w-0">
                                 <span class="font-mono text-sm font-semibold text-indigo-800 truncate">{{grp.tid}}</span>
+                                <button @click="copyText(grp.tid)" type="button"
+                                    class="p-0.5 rounded text-indigo-300 hover:text-indigo-700 hover:bg-indigo-100 transition shrink-0"
+                                    :title="'Copy Template ID — ' + grp.tid">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                                </button>
                                 <span v-if="unsHasRepoData"
                                     class="px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider shrink-0"
                                     :class="classMeta(classifyTid(grp.tid)).chip"
@@ -1526,7 +1542,9 @@
                         <div class="p-3 flex flex-wrap gap-1.5">
                             <div v-for="t in grp.tids" :key="t.tid"
                                 class="inline-flex items-center gap-1.5 px-2 py-1 bg-gray-50 border border-gray-200 rounded">
-                                <span class="font-mono text-[11px] text-gray-700">{{t.tid}}</span>
+                                <button @click="copyText(t.tid)" type="button"
+                                    class="font-mono text-[11px] text-gray-700 hover:text-indigo-700"
+                                    :title="'Copy Template ID — ' + t.tid">{{t.tid}}</button>
                                 <span v-if="t.html" class="px-1 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[9px] font-mono font-bold">HTML</span>
                                 <span v-if="t.subject" class="px-1 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-mono font-bold">SUBJ</span>
                             </div>
@@ -3401,6 +3419,44 @@ createApp({
             return groups;
         });
         const unsMatrixRowCount = computed(() => unsMatrixGroups.value.reduce((n, g) => n + g.count, 0));
+
+        // The visible matrix as a JIRA wiki table — one row per TID in the
+        // current group order, one column per brand, HTML/SUBJ cell markers.
+        // Respects the active kind/search/class filters (copies what you see);
+        // a Class column is added only when the repo classification is synced.
+        function unsMatrixJiraText() {
+            const brands = unsMatrix.value.brands;
+            const groups = unsMatrixGroups.value;
+            const synced = unsHasRepoData.value;
+            const rows = unsMatrixRowCount.value;
+            const filtered = !!unsSearch.value.trim() || unsKindFilter.value !== 'all' || unsClassFilter.value !== 'all';
+            const brandCol = (b) => {
+                const n = unsBrandName(b);
+                return n ? b + ' (' + n + ')' : b;
+            };
+            const lines = [];
+            lines.push('Template × Brand matrix — ' + rows + ' template' + (rows === 1 ? '' : 's')
+                + ' × ' + brands.length + ' brand' + (brands.length === 1 ? '' : 's')
+                + (filtered ? ' (filtered view)' : ''));
+            lines.push('');
+            lines.push('||Template ID||' + (synced ? 'Class||' : '') + brands.map(brandCol).join('||') + '||');
+            for (const grp of groups) {
+                for (const tid of grp.tids) {
+                    const cells = brands.map(b => {
+                        const cell = unsMatrix.value.data[tid] && unsMatrix.value.data[tid][b];
+                        if (!cell || (!cell.html && !cell.subject)) return '—';
+                        return [cell.html ? 'HTML' : '', cell.subject ? 'SUBJ' : ''].filter(Boolean).join(' + ');
+                    });
+                    lines.push('|' + tid + '|' + (synced ? grp.short + '|' : '') + cells.join('|') + '|');
+                }
+            }
+            return lines.join('\n') + '\n';
+        }
+
+        function copyUnsMatrixJira() {
+            if (!unsMatrixRowCount.value) return;
+            copyText(unsMatrixJiraText());
+        }
 
         // Human-friendly timestamp for the last successful sync.
         const unsRepoSyncedLabel = computed(() => {
@@ -5480,7 +5536,7 @@ createApp({
             // UNS partial/template classification
             unsRepoRoot, unsRepoRef, unsRepoData, unsRepoLoading, unsRepoError,
             unsShowRepoConfig, unsClassFilter, unsHasRepoData,
-            unsClassStats, unsMatrixGroups, unsMatrixRowCount, unsRepoSyncedLabel,
+            unsClassStats, unsMatrixGroups, unsMatrixRowCount, copyUnsMatrixJira, unsRepoSyncedLabel,
             unsRepoSourceLabel, unsRepoSourceShort,
             classifyTid, classMeta, syncUnsRepo, clearUnsRepoData,
             addBrandEntry, updateBrandEntry, deleteBrandEntry,
