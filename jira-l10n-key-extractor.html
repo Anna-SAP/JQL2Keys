@@ -62,6 +62,9 @@
             <span v-if="activeTool==='bug-helper' && bugStats.units" class="text-xs bg-white/20 px-2 py-1 rounded">
                 {{bugStats.units}} units &middot; {{bugStats.sourceRecords}} sources &middot; {{bugStats.locales}} langs
             </span>
+            <span v-if="activeTool==='bug-delivery' && deliveryStats.languages" class="text-xs bg-white/20 px-2 py-1 rounded">
+                {{deliveryStats.languages}} langs &middot; {{deliveryStats.totalKeys}} keys &middot; {{deliveryStats.uniqueKeys}} unique
+            </span>
             <a v-if="config.domain" :href="jiraDomainUrl()" target="_blank" rel="noopener"
                 :class="['hidden md:inline-flex items-center gap-1 text-[11px] hover:text-white hover:underline', headerBranding.tagClass]">
                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
@@ -144,6 +147,19 @@
                             <span class="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold tracking-wider">NEW</span>
                         </div>
                         <div class="text-[10px] text-gray-500 truncate">Decode UTM URL → TID / Brand / Lang</div>
+                    </div>
+                </button>
+                <button @click="selectTool('bug-delivery')"
+                    :class="['tool-nav-btn relative w-full text-left rounded-md flex items-start gap-2 px-3 py-2 mt-0.5',
+                            activeTool==='bug-delivery' ? 'active' : '']">
+                    <svg class="w-4 h-4 mt-0.5 shrink-0" :class="activeTool==='bug-delivery' ? 'text-indigo-600' : 'text-gray-500'"
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="text-sm font-medium text-gray-800 tool-nav-title">UNS Bug Fixing Delivery</span>
+                            <span class="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold tracking-wider">NEW</span>
+                        </div>
+                        <div class="text-[10px] text-gray-500 truncate">Merged-source JSON → langs & keys</div>
                     </div>
                 </button>
                 <button disabled
@@ -1808,6 +1824,189 @@
         </template>
 
         <!-- ═══════════════════════════════════════ -->
+        <!-- ─── UNS TOOLKIT — Bug Fixing Delivery ─── -->
+        <!-- ═══════════════════════════════════════ -->
+        <template v-if="activeTool === 'bug-delivery'">
+        <main class="flex-1 flex flex-col overflow-y-auto bg-gray-50">
+            <!-- Tool header -->
+            <div class="px-6 py-5 bg-white border-b border-gray-200 flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0">
+                    <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2 flex-wrap">
+                        UNS Bug Fixing Delivery
+                        <span class="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold tracking-wider">NEW</span>
+                    </h2>
+                    <p class="text-xs text-gray-500 mt-1 max-w-3xl">
+                        Paste the <span class="text-indigo-700 font-semibold">merged-source JSON</span> attached to a
+                        bug-fixing delivery (per-language
+                        <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">{ count, strings }</code> blocks).
+                        The tool ignores the Handlebars values and distils the
+                        <span class="text-indigo-700 font-semibold">affected languages with counts</span> plus each
+                        language's <span class="text-indigo-700 font-semibold">key list</span> — ready to paste into the
+                        bug's JIRA ticket for testers.
+                    </p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    <button @click="copyDeliveryUniqueKeys" type="button" :disabled="!deliveryStats.languages"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition disabled:opacity-40 disabled:cursor-not-allowed">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                        Copy unique keys
+                    </button>
+                    <button @click="copyDeliveryJiraText" type="button" :disabled="!deliveryStats.languages"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition disabled:opacity-40 disabled:cursor-not-allowed">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                        Copy JIRA text
+                    </button>
+                </div>
+            </div>
+
+            <div class="px-6 py-5 space-y-4">
+                <!-- Input card -->
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                    <div class="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+                        <div class="flex items-center gap-2">
+                            <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            <div>
+                                <div class="text-sm font-semibold text-gray-800">Paste merged-source JSON</div>
+                                <div class="text-[11px] text-gray-500">
+                                    <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">{ "ja-JP": { "count": 6, "strings": { key: hbs… } }, … }</code>
+                                    — values are ignored, auto-parses as you type
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <button @click="loadDeliverySample" type="button"
+                                class="text-[11px] text-indigo-600 hover:text-indigo-800 hover:underline">Load sample</button>
+                            <button @click="deliveryInput = ''" type="button" :disabled="!deliveryInput"
+                                class="text-[11px] text-gray-500 hover:text-gray-700 hover:underline disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline">Clear</button>
+                        </div>
+                    </div>
+                    <div class="p-4">
+                        <textarea v-model="deliveryInput" rows="6" spellcheck="false"
+                            placeholder='{&#10;  "ja-JP": {&#10;    "count": 6,&#10;    "strings": {&#10;      "RingCentral.uns.<hash>.mapClientSecretExpiring__email_html__1210__en_US": "<?xml … full HBS body, ignored …>",&#10;      …&#10;    }&#10;  },&#10;  "ko-KR": { … }&#10;}'
+                            class="w-full px-3 py-2 text-xs border border-gray-300 rounded-md font-mono leading-relaxed resize-y outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"></textarea>
+                        <div class="mt-2 text-[11px] text-gray-500">
+                            <template v-if="deliveryLangs.length">
+                                <span class="font-semibold text-gray-700">{{deliveryStats.languages}}</span>
+                                language{{deliveryStats.languages === 1 ? '' : 's'}}
+                                <span class="text-gray-400">·</span>
+                                <span class="font-semibold text-gray-700">{{deliveryStats.totalKeys}}</span>
+                                key entr{{deliveryStats.totalKeys === 1 ? 'y' : 'ies'}}
+                                <span class="text-gray-400">·</span>
+                                <span class="font-semibold text-gray-700">{{deliveryStats.uniqueKeys}}</span>
+                                unique key{{deliveryStats.uniqueKeys === 1 ? '' : 's'}}
+                                <span v-if="deliveryStats.mismatches" class="text-amber-600 ml-1">· {{deliveryStats.mismatches}} count mismatch{{deliveryStats.mismatches === 1 ? '' : 'es'}}</span>
+                                <span v-if="deliverySkipped.length" class="text-amber-600 ml-1"
+                                    :title="deliverySkipped.join(', ')">· {{deliverySkipped.length}} non-locale entr{{deliverySkipped.length === 1 ? 'y' : 'ies'}} ignored</span>
+                            </template>
+                            <template v-else-if="deliveryParseError">
+                                <span class="text-red-600">{{deliveryParseError}}</span>
+                            </template>
+                            <template v-else-if="deliveryInput.trim()">
+                                <span class="text-amber-600">No locale blocks found yet — top-level keys must look like "ja-JP" / "ko-KR"</span>
+                            </template>
+                            <template v-else>
+                                <span class="text-gray-400">Paste your merged-source JSON above to begin</span>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Empty state -->
+                <div v-if="!deliveryLangs.length" class="bg-white border border-gray-200 rounded-lg p-10 text-center text-gray-400">
+                    <svg class="w-14 h-14 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                    <p class="text-sm text-gray-500 font-medium">Paste a bug-fixing merged-source JSON above</p>
+                    <p class="text-xs mt-1">The tool reads the per-language <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">strings</code> maps and ignores the Handlebars bodies.</p>
+                </div>
+
+                <template v-else>
+                    <!-- Stat cards -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div class="bg-white border border-gray-200 rounded-lg p-3">
+                            <div class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Languages</div>
+                            <div class="text-2xl font-bold text-indigo-700 tabular-nums">{{deliveryStats.languages}}</div>
+                            <div class="text-[10px] text-gray-400">affected locales</div>
+                        </div>
+                        <div class="bg-white border border-gray-200 rounded-lg p-3">
+                            <div class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Key entries</div>
+                            <div class="text-2xl font-bold text-gray-800 tabular-nums">{{deliveryStats.totalKeys}}</div>
+                            <div class="text-[10px] text-gray-400">across all languages</div>
+                        </div>
+                        <div class="bg-white border border-gray-200 rounded-lg p-3">
+                            <div class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Unique keys</div>
+                            <div class="text-2xl font-bold text-gray-800 tabular-nums">{{deliveryStats.uniqueKeys}}</div>
+                            <div class="text-[10px] text-gray-400">union over languages</div>
+                        </div>
+                        <div class="bg-white border border-gray-200 rounded-lg p-3">
+                            <div class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Count mismatches</div>
+                            <div class="text-2xl font-bold tabular-nums" :class="deliveryStats.mismatches ? 'text-amber-600' : 'text-gray-800'">{{deliveryStats.mismatches}}</div>
+                            <div class="text-[10px] text-gray-400">declared ≠ actual</div>
+                        </div>
+                    </div>
+
+                    <!-- JIRA delivery text -->
+                    <div class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                        <div class="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+                            <div class="flex items-center gap-2">
+                                <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                                <div>
+                                    <div class="text-sm font-semibold text-gray-800">JIRA delivery text</div>
+                                    <div class="text-[11px] text-gray-500">Languages, counts & key lists — paste straight into the ticket</div>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0">
+                                <div class="inline-flex rounded-md border border-gray-300 overflow-hidden bg-white">
+                                    <button @click="deliveryFormat = 'jira'" type="button"
+                                        :class="deliveryFormat === 'jira' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'"
+                                        class="px-3 py-1.5 text-xs font-medium transition">JIRA wiki</button>
+                                    <button @click="deliveryFormat = 'markdown'" type="button"
+                                        :class="deliveryFormat === 'markdown' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'"
+                                        class="px-3 py-1.5 text-xs font-medium transition border-l border-gray-300">Markdown</button>
+                                    <button @click="deliveryFormat = 'plain'" type="button"
+                                        :class="deliveryFormat === 'plain' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'"
+                                        class="px-3 py-1.5 text-xs font-medium transition border-l border-gray-300">Plain</button>
+                                </div>
+                                <button @click="copyDeliveryText" type="button"
+                                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                                    Copy
+                                </button>
+                            </div>
+                        </div>
+                        <pre class="p-4 text-[11px] font-mono leading-relaxed text-gray-700 whitespace-pre-wrap break-all max-h-96 overflow-y-auto">{{deliveryText}}</pre>
+                    </div>
+
+                    <!-- Per-language cards -->
+                    <div class="space-y-3">
+                        <div v-for="l in deliveryLangs" :key="l.lang" class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                            <div class="px-4 py-2.5 bg-gray-50 border-b border-gray-100 flex items-center justify-between gap-2 flex-wrap">
+                                <div class="flex items-center gap-2 flex-wrap min-w-0">
+                                    <span class="font-mono text-sm text-indigo-700 font-bold">{{l.lang}}</span>
+                                    <span class="text-[10px] text-gray-500 tabular-nums">{{l.keys.length}} key{{l.keys.length === 1 ? '' : 's'}}</span>
+                                    <span v-if="l.declared != null && !l.mismatch"
+                                        class="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold tracking-wider"
+                                        :title="'Declared count matches: ' + l.declared">count ✓</span>
+                                    <span v-if="l.mismatch"
+                                        class="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold tracking-wider"
+                                        :title="'JSON declares count ' + l.declared + ' but ' + l.keys.length + ' key(s) found'">count {{l.declared}} ≠ {{l.keys.length}}</span>
+                                </div>
+                                <button @click="copyDeliveryLangKeys(l)" type="button"
+                                    class="text-[10px] text-gray-500 hover:text-indigo-700 hover:underline shrink-0">Copy keys</button>
+                            </div>
+                            <ul class="divide-y divide-gray-50">
+                                <li v-for="(k, ki) in l.keys" :key="ki" class="px-4 py-1.5">
+                                    <button @click="copyText(k)"
+                                        class="font-mono text-[11px] text-gray-700 hover:text-indigo-700 text-left break-all leading-snug"
+                                        :title="'Copy key — ' + k">{{k}}</button>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </main>
+        </template>
+
+        <!-- ═══════════════════════════════════════ -->
         <!-- ─── DAILY WORK — Bug Fixing Helper ─── -->
         <!-- ═══════════════════════════════════════ -->
         <template v-if="activeTool === 'bug-helper'">
@@ -2434,7 +2633,11 @@ createApp({
         const bugInput   = ref(localStorage.getItem('uns_bugInput') || '');
         const bugView    = ref(localStorage.getItem('uns_bugView') || 'meta'); // 'meta' | 'trans'
         const bugFilter  = ref('');
-        const bugDiffExpanded = ref(new Set()); // `${key} ${locale}` entries with the source-diff panel open
+        const bugDiffExpanded = ref(new Set()); // `${key} ${locale}` entries with the source-diff panel open
+
+        // ─── UNS Bug Fixing Delivery state ───────
+        const deliveryInput  = ref(localStorage.getItem('uns_deliveryInput') || '');
+        const deliveryFormat = ref(localStorage.getItem('uns_deliveryFormat') || 'jira'); // 'jira' | 'markdown' | 'plain'
 
         // A representative slice of a "filtered translation dump": one rich unit
         // carrying _source + multi-entry _all_sources (Scan + two MRs), and one
@@ -2690,7 +2893,7 @@ createApp({
         // colours, icon label, and default copy. A tool lands in a section by
         // membership below; everything unlisted falls back to the legacy
         // JQL2Keys brand.
-        const UNS_TOOLKIT_TOOLS = new Set(['key-metadata', 'utm-analysis', 'brand-coverage', 'template-diff']);
+        const UNS_TOOLKIT_TOOLS = new Set(['key-metadata', 'utm-analysis', 'bug-delivery', 'brand-coverage', 'template-diff']);
         const DAILY_WORK_TOOLS  = new Set(['bug-helper']);
         const isUnsTool = computed(() => UNS_TOOLKIT_TOOLS.has(activeTool.value));
 
@@ -2742,6 +2945,11 @@ createApp({
             },
             'utm-analysis': {
                 subtitle: 'Decode UNS Template Manager URLs into TIDs, brands & locales',
+            },
+            'bug-delivery': {
+                title: 'UNS Bug Fixing Delivery',
+                subtitle: 'Distil affected languages & keys from bug-fixing merged-source JSON',
+                tag: 'internal · bug fixing',
             },
         };
 
@@ -4605,6 +4813,14 @@ createApp({
             localStorage.setItem('uns_bugInput', s);
         });
         watch(bugView, (v) => { localStorage.setItem('uns_bugView', v); });
+        watch(deliveryInput, (v) => {
+            // Merged-source values are whole Handlebars documents, so a paste can
+            // dwarf the 500k cap. Persisting a truncated slice would reload as
+            // broken JSON, so oversized pastes simply aren't persisted.
+            const s = v || '';
+            try { localStorage.setItem('uns_deliveryInput', s.length <= 500000 ? s : ''); } catch {}
+        });
+        watch(deliveryFormat, (v) => { try { localStorage.setItem('uns_deliveryFormat', v); } catch {} });
 
         function loadUnsSample() {
             unsKeysInput.value = UNS_SAMPLE_KEYS;
@@ -5057,6 +5273,170 @@ createApp({
             showToast('Metadata JSON exported');
         }
 
+        // ═══════════════════════════════════════
+        //  UNS TOOLKIT — Bug Fixing Delivery
+        // ═══════════════════════════════════════
+        // A bug-fixing delivery ships a "merged-source" JSON for engineers to
+        // import: top-level locale codes, each holding { count, strings } where
+        // strings maps full UNS keys to entire Handlebars documents. For the
+        // JIRA ticket only the languages and key lists matter — the values are
+        // whole templates and would be noise — so the parser keeps keys only.
+        function normDeliveryLocale(s) {
+            const t = String(s || '').trim().replace(/_/g, '-');
+            return /^[A-Za-z]{2,3}-(?:[A-Za-z]{2,4}|\d{3})$/.test(t) ? t : '';
+        }
+
+        function parseDeliveryInput(text) {
+            const raw = String(text || '').trim();
+            if (!raw) return { langs: [], skipped: [], error: '' };
+            const cleaned = stripBugCodeFences(raw);
+
+            let parsed = tryParseJson(cleaned);
+            if (!parsed.ok) {
+                const a = cleaned.indexOf('{'), b = cleaned.lastIndexOf('}');
+                if (a >= 0 && b > a) parsed = tryParseJson(cleaned.slice(a, b + 1));
+            }
+            if (!parsed.ok) return { langs: [], skipped: [], error: 'Could not parse JSON — ' + parsed.error };
+
+            const v = parsed.value;
+            if (!v || typeof v !== 'object' || Array.isArray(v)) {
+                return { langs: [], skipped: [], error: 'Expected a JSON object mapping locales to { count, strings } blocks' };
+            }
+
+            const langs = [], skipped = [];
+            const byLang = new Map();
+            for (const [rawLang, block] of Object.entries(v)) {
+                const lang = normDeliveryLocale(rawLang);
+                if (!lang) { skipped.push(rawLang); continue; }
+
+                let keys = [], declared = null;
+                if (block && typeof block === 'object' && !Array.isArray(block)) {
+                    if (typeof block.count === 'number' && Number.isFinite(block.count)) declared = block.count;
+                    if (block.strings && typeof block.strings === 'object' && !Array.isArray(block.strings)) {
+                        keys = Object.keys(block.strings);
+                    } else if (Array.isArray(block.keys)) {
+                        keys = block.keys.filter(k => typeof k === 'string');
+                    } else if (!('strings' in block) && !('keys' in block)) {
+                        // Tolerate a bare key → value map with no { count, strings } wrapper.
+                        // A present-but-malformed strings/keys must NOT fall through here,
+                        // or the wrapper names themselves would be reported as keys —
+                        // keys stays [] so a declared count surfaces as a mismatch.
+                        keys = Object.keys(block).filter(k => k !== 'count');
+                    }
+                } else if (Array.isArray(block)) {
+                    keys = block.filter(k => typeof k === 'string');
+                } else {
+                    skipped.push(rawLang);
+                    continue;
+                }
+                // "ja_JP" and "ja-JP" both normalise to ja-JP — merge such blocks
+                // instead of double-listing the language in stats and JIRA text.
+                const prev = byLang.get(lang);
+                if (prev) {
+                    for (const k of keys) if (!prev.keys.includes(k)) prev.keys.push(k);
+                    prev.declared = (prev.declared != null && declared != null) ? prev.declared + declared : null;
+                    prev.mismatch = prev.declared != null && prev.declared !== prev.keys.length;
+                } else {
+                    const entry = { lang, rawLang, declared, keys, mismatch: declared != null && declared !== keys.length };
+                    byLang.set(lang, entry);
+                    langs.push(entry);
+                }
+            }
+            if (!langs.length) {
+                return { langs: [], skipped, error: 'No locale blocks found — top-level keys must look like "ja-JP" / "ko-KR"' };
+            }
+            return { langs, skipped, error: '' };
+        }
+
+        const deliveryParsed = computed(() => parseDeliveryInput(deliveryInput.value));
+        const deliveryLangs = computed(() => deliveryParsed.value.langs);
+        const deliverySkipped = computed(() => deliveryParsed.value.skipped);
+        const deliveryParseError = computed(() => deliveryLangs.value.length ? '' : deliveryParsed.value.error);
+
+        const deliveryStats = computed(() => {
+            const langs = deliveryLangs.value;
+            const uniq = new Set();
+            let totalKeys = 0, mismatches = 0;
+            for (const l of langs) {
+                totalKeys += l.keys.length;
+                for (const k of l.keys) uniq.add(k);
+                if (l.mismatch) mismatches++;
+            }
+            return { languages: langs.length, totalKeys, uniqueKeys: uniq.size, mismatches };
+        });
+
+        function renderDeliveryText(fmt) {
+            const langs = deliveryLangs.value;
+            if (!langs.length) return '';
+            const summary = 'Affected languages (' + langs.length + '): '
+                + langs.map(l => l.lang + ' (' + l.keys.length + ')').join(', ');
+            const head = fmt === 'jira' ? '*' + summary + '*'
+                       : fmt === 'markdown' ? '**' + summary + '**'
+                       : summary;
+            const lines = [head, ''];
+            for (const l of langs) {
+                const heading = l.lang + ' — ' + l.keys.length + ' key' + (l.keys.length === 1 ? '' : 's');
+                if (fmt === 'jira') {
+                    lines.push('h3. ' + heading, '{code}', ...l.keys, '{code}', '');
+                } else if (fmt === 'markdown') {
+                    lines.push('### ' + heading, '```', ...l.keys, '```', '');
+                } else {
+                    lines.push(heading, ...l.keys, '');
+                }
+            }
+            return lines.join('\n').trimEnd() + '\n';
+        }
+        const deliveryText = computed(() => renderDeliveryText(deliveryFormat.value));
+
+        // In-card Copy — follows the visible format toggle.
+        function copyDeliveryText() {
+            if (!deliveryStats.value.languages) return;
+            copyText(deliveryText.value);
+        }
+
+        // Tool-header button — always delivers what its label promises,
+        // regardless of the persisted format toggle.
+        function copyDeliveryJiraText() {
+            if (!deliveryStats.value.languages) return;
+            copyText(renderDeliveryText('jira'));
+        }
+
+        function copyDeliveryLangKeys(l) {
+            copyText(l.keys.join('\n'));
+        }
+
+        function copyDeliveryUniqueKeys() {
+            const langs = deliveryLangs.value;
+            if (!langs.length) return;
+            const seen = new Set(), uniq = [];
+            for (const l of langs) for (const k of l.keys) {
+                if (!seen.has(k)) { seen.add(k); uniq.push(k); }
+            }
+            copyText(uniq.join('\n'));
+        }
+
+        // Mirrors the merged-source file from a real delivery: two locales, six
+        // keys each, values stubbed — the parser never reads them anyway.
+        const DELIVERY_HBS_STUB = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" …full Handlebars body, ignored by the parser…';
+        const DELIVERY_SAMPLE_KEYS = [
+            'RingCentral.uns.e5099659f6509652502b12e6406362d1.mapClientSecretExpiring__email_html__1210__en_US',
+            'RingCentral.uns.27381956c87b05fe0b48590dc5462a53.mapClientSecretExpiring__email_html__6010__en_US',
+            'RingCentral.uns.125f1ccd904ab2090e459198c14f9d96.mapClientSecretExpiring__email_html__1210__en_US',
+            'RingCentral.uns.dbb21fc8865d8bac6b6d792983dfa362.mapClientSecretExpired__email_html__6010__en_US',
+            'RingCentral.uns.e9d263f12ad7ecbddb6afc0e76acab33.mapClientSecretExpiresSoon__email_html__1210__en_US',
+            'RingCentral.uns.830eef3cf1b1a8c7ca11877216e4da64.mapClientSecretExpired__email_html__1210__en_US',
+        ];
+        const DELIVERY_SAMPLE = JSON.stringify(
+            Object.fromEntries(['ja-JP', 'ko-KR'].map(l => [l, {
+                count: DELIVERY_SAMPLE_KEYS.length,
+                strings: Object.fromEntries(DELIVERY_SAMPLE_KEYS.map(k => [k, DELIVERY_HBS_STUB])),
+            }])), null, 2);
+
+        function loadDeliverySample() {
+            deliveryInput.value = DELIVERY_SAMPLE;
+            showToast('Sample merged-source loaded');
+        }
+
         function exportUnsJson() {
             if (!unsStats.value.total) return;
             const data = buildUnsExport();
@@ -5115,6 +5495,11 @@ createApp({
             bugMetaGroups, bugTransCards,
             fmtBugDate, bugSourceBadgeClass, toggleBugDiff, bugDiffOpen,
             loadBugSample, copyBugMetaCsv, exportBugMetaJson,
+            // UNS Bug Fixing Delivery
+            deliveryInput, deliveryFormat, deliveryLangs, deliverySkipped,
+            deliveryParseError, deliveryStats, deliveryText,
+            loadDeliverySample, copyDeliveryText, copyDeliveryJiraText,
+            copyDeliveryLangKeys, copyDeliveryUniqueKeys,
         };
     }
 }).mount('#app');
