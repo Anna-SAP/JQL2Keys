@@ -1152,7 +1152,7 @@
                     <label class="flex-1 min-w-[260px]">
                         <span class="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-0.5">UNS clone path (repo root or uns-app)</span>
                         <input v-model="unsRepoRoot" type="text" spellcheck="false"
-                            placeholder="C:\Users\you\SW\UNS"
+                            placeholder="E:\SW\UNS"
                             @keydown.enter.prevent="syncUnsRepo"
                             class="w-full px-2 py-1 text-[11px] border border-slate-300 rounded font-mono focus:ring-1 focus:ring-indigo-500 outline-none">
                     </label>
@@ -2675,7 +2675,11 @@ createApp({
         // extracted TID as a template, a partial, both, or unknown. The fetch is
         // manual ("Sync from repo") and the result is cached in localStorage so
         // the labels survive reloads until the user re-syncs.
-        const UNS_DEFAULT_REPO_ROOT = 'C:\\Users\\susu82\\SW\\UNS';
+        const UNS_DEFAULT_REPO_ROOT = 'E:\\SW\\UNS';
+        // Roots the UNS clone used to live at. A saved root matching one of
+        // these is silently migrated to the current default, otherwise every
+        // re-sync keeps failing with "Path not found" long after the move.
+        const UNS_LEGACY_REPO_ROOTS = ['C:\\Users\\susu82\\SW\\UNS'];
         function loadUnsRepoData() {
             try {
                 const raw = localStorage.getItem('uns_repoData');
@@ -2685,7 +2689,16 @@ createApp({
             } catch {}
             return null;
         }
-        const unsRepoRoot      = ref(localStorage.getItem('uns_repoRoot') || UNS_DEFAULT_REPO_ROOT);
+        function loadUnsRepoRoot() {
+            const saved = localStorage.getItem('uns_repoRoot') || UNS_DEFAULT_REPO_ROOT;
+            const norm = s => s.trim().replace(/[\\/]+$/, '').toLowerCase();
+            if (UNS_LEGACY_REPO_ROOTS.some(old => norm(old) === norm(saved))) {
+                try { localStorage.setItem('uns_repoRoot', UNS_DEFAULT_REPO_ROOT); } catch {}
+                return UNS_DEFAULT_REPO_ROOT;
+            }
+            return saved;
+        }
+        const unsRepoRoot      = ref(loadUnsRepoRoot());
         const unsRepoRef       = ref(localStorage.getItem('uns_repoRef') || 'master');
         const unsRepoData      = ref(loadUnsRepoData());        // { templates, partials, ref, mode, counts, root, generatedAt } | null
         const unsRepoLoading   = ref(false);
@@ -2995,7 +3008,7 @@ createApp({
         // ═══════════════════════════════════════
         //  UNS — App-level computeds
         // ═══════════════════════════════════════
-        const appVersion = '1.9.0';
+        const appVersion = '1.9.1';
         const appHostLabel = computed(() => {
             if (typeof location === 'undefined' || !location.host) return 'standalone';
             return location.host;
@@ -3618,6 +3631,9 @@ createApp({
                     + ` (${payload.mode === 'git' ? payload.ref : 'working tree'})`);
             } catch (e) {
                 unsRepoError.value = e.message || String(e);
+                // The error banner lives inside the collapsible config panel —
+                // open it, or a failed sync is just an unexplained toast.
+                unsShowRepoConfig.value = true;
                 showToast('Repo sync failed');
             } finally {
                 unsRepoLoading.value = false;

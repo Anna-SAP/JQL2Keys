@@ -36,7 +36,7 @@ const NO_OPEN = process.argv.includes('--no-open') || process.env.JQL2KEYS_NO_OP
 // ref's tree (default `master`) so names that live in the ref but are missing on
 // disk still count. git is optional — when unavailable it uses the disk listing
 // alone.
-const DEFAULT_UNS_ROOT = process.env.UNS_REPO_ROOT || 'C:\\Users\\susu82\\SW\\UNS';
+const DEFAULT_UNS_ROOT = process.env.UNS_REPO_ROOT || 'E:\\SW\\UNS';
 const UNS_STORAGES = ['templateStorage', 'newTemplateStorage'];
 
 function execFileP(cmd, args, opts) {
