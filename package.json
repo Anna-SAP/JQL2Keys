@@ -5,11 +5,15 @@
   "main": "JQL2Keys.js",
   "bin": "JQL2Keys.js",
   "scripts": {
+    "test": "node --test",
     "build": "pkg ."
   },
   "pkg": {
     "assets": [
-      "jira-l10n-key-extractor.html"
+      "jira-l10n-key-extractor.html",
+      "vendor/tailwind.min.css",
+      "vendor/vue.global.prod.js",
+      "vendor/jszip.min.js"
     ],
     "targets": [
       "node20-win-x64"

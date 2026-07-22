@@ -12,7 +12,9 @@ node jira-cors-proxy.js
 node jira-cors-proxy.js 3002
 ```
 
-Zero dependencies — runs on Node.js built-in modules only.
+The application server itself uses only Node.js built-in modules. Vue, JSZip,
+and the compiled Tailwind stylesheet are bundled locally, so the UI also starts
+without public CDN access.
 
 ### 2. Open the SPA
 
@@ -75,5 +77,17 @@ Browsers block direct cross-origin requests to Jira. Two options:
 
 | File | Description |
 |------|-------------|
-| `jira-l10n-key-extractor.html` | Single-file SPA (Vue 3 + TailwindCSS CDN) |
+| `jira-l10n-key-extractor.html` | SPA entry point (Vue 3 + precompiled TailwindCSS) |
 | `jira-cors-proxy.js` | Zero-dependency Node.js CORS proxy server |
+
+## Build
+
+```bash
+npm install -g @yao-pkg/pkg
+npm test
+npm run build
+```
+
+The generated browser dependencies are committed under `vendor/` and packaged
+into the EXE, so runtime startup never depends on an external CDN. Their pinned
+versions and upstream sources are recorded in `vendor/THIRD_PARTY.md`.

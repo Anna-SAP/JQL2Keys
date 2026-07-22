@@ -8,6 +8,9 @@ on:
       - 'jira-cors-proxy.js'
       - 'jira-l10n-key-extractor.html'
       - 'package.json'
+      - 'vendor/**'
+      - 'test/**'
+      - 'tailwind.config.js'
       - '.github/workflows/release.yml'
   workflow_dispatch:
 
@@ -35,6 +38,9 @@ jobs:
 
       - name: Install yao-pkg
         run: npm install -g @yao-pkg/pkg
+
+      - name: Run tests
+        run: npm test
 
       - name: Build EXE (node20-win-x64)
         run: pkg .

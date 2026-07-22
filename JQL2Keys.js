@@ -277,6 +277,33 @@ function loadHTML() {
 }
 
 const HTML_CONTENT = loadHTML();
+// Core browser dependencies are bundled with the application. Keeping these
+// local is essential: if a CDN or VPN route is unavailable, Vue never mounts
+// and the v-cloaked SPA otherwise appears as a completely blank page.
+const STATIC_ASSET_DEFINITIONS = {
+    '/vendor/tailwind.min.css': { file: 'tailwind.min.css', contentType: 'text/css; charset=utf-8' },
+    '/vendor/vue.global.prod.js': { file: 'vue.global.prod.js', contentType: 'text/javascript; charset=utf-8' },
+    '/vendor/jszip.min.js': { file: 'jszip.min.js', contentType: 'text/javascript; charset=utf-8' },
+};
+
+function loadStaticAsset(filename) {
+    const candidates = [
+        path.join(__dirname, 'vendor', filename),
+        path.join(process.cwd(), 'vendor', filename),
+    ];
+    for (const p of candidates) {
+        try { return fs.readFileSync(p); } catch {}
+    }
+    return null;
+}
+
+const STATIC_ASSETS = Object.fromEntries(
+    Object.entries(STATIC_ASSET_DEFINITIONS).map(([urlPath, definition]) => [
+        urlPath,
+        { ...definition, content: loadStaticAsset(definition.file) },
+    ])
+);
+
 
 // ═══════════════════════════════════════
 //  HTTP Server
@@ -300,6 +327,21 @@ const server = http.createServer((req, res) => {
     if (reqUrl.pathname === '/' || reqUrl.pathname === '/index.html') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
         return res.end(HTML_CONTENT);
+    }
+
+    // Bundled browser dependencies (offline-safe)
+    if (STATIC_ASSETS[reqUrl.pathname]) {
+        const asset = STATIC_ASSETS[reqUrl.pathname];
+        if (!asset.content) {
+            res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+            return res.end('Bundled asset missing: ' + asset.file);
+        }
+        res.writeHead(200, {
+            'Content-Type': asset.contentType,
+            'Content-Length': asset.content.length,
+            'Cache-Control': 'public, max-age=31536000, immutable',
+        });
+        return res.end(asset.content);
     }
 
     // ── Favicon (suppress 404) ──
