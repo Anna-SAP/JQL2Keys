@@ -281,15 +281,16 @@ const HTML_CONTENT = loadHTML();
 // local is essential: if a CDN or VPN route is unavailable, Vue never mounts
 // and the v-cloaked SPA otherwise appears as a completely blank page.
 const STATIC_ASSET_DEFINITIONS = {
-    '/vendor/tailwind.min.css': { file: 'tailwind.min.css', contentType: 'text/css; charset=utf-8' },
-    '/vendor/vue.global.prod.js': { file: 'vue.global.prod.js', contentType: 'text/javascript; charset=utf-8' },
-    '/vendor/jszip.min.js': { file: 'jszip.min.js', contentType: 'text/javascript; charset=utf-8' },
+    '/key-metadata-parser.js': { file: 'key-metadata-parser.js', directory: '', contentType: 'text/javascript; charset=utf-8' },
+    '/vendor/tailwind.min.css': { file: 'tailwind.min.css', directory: 'vendor', contentType: 'text/css; charset=utf-8' },
+    '/vendor/vue.global.prod.js': { file: 'vue.global.prod.js', directory: 'vendor', contentType: 'text/javascript; charset=utf-8' },
+    '/vendor/jszip.min.js': { file: 'jszip.min.js', directory: 'vendor', contentType: 'text/javascript; charset=utf-8' },
 };
 
-function loadStaticAsset(filename) {
+function loadStaticAsset(filename, directory) {
     const candidates = [
-        path.join(__dirname, 'vendor', filename),
-        path.join(process.cwd(), 'vendor', filename),
+        path.join(__dirname, directory, filename),
+        path.join(process.cwd(), directory, filename),
     ];
     for (const p of candidates) {
         try { return fs.readFileSync(p); } catch {}
@@ -300,7 +301,7 @@ function loadStaticAsset(filename) {
 const STATIC_ASSETS = Object.fromEntries(
     Object.entries(STATIC_ASSET_DEFINITIONS).map(([urlPath, definition]) => [
         urlPath,
-        { ...definition, content: loadStaticAsset(definition.file) },
+        { ...definition, content: loadStaticAsset(definition.file, definition.directory) },
     ])
 );
 

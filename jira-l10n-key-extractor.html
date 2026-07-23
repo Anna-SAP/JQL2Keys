@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>UNS Assistant — Localization toolkit</title>
     <link rel="stylesheet" href="vendor/tailwind.min.css">
+    <script src="key-metadata-parser.js"></script>
     <script src="vendor/vue.global.prod.js"></script>
     <script src="vendor/jszip.min.js"></script>
     <style>
@@ -51,8 +52,8 @@
             <span v-if="(activeTool==='jira-keys' || activeTool==='working-files') && stats.keyCount" class="text-xs bg-white/20 px-2 py-1 rounded">
                 {{stats.issueCount}} issues &middot; {{stats.langCount}} langs &middot; {{stats.keyCount}} keys
             </span>
-            <span v-if="activeTool==='key-metadata' && unsStats.total" class="text-xs bg-white/20 px-2 py-1 rounded">
-                {{unsStats.total}} keys &middot; {{unsStats.tids}} TIDs &middot; {{unsStats.brands}} brands
+            <span v-if="activeTool==='key-metadata' && keyMetadataStats.total" class="text-xs bg-white/20 px-2 py-1 rounded">
+                {{keyMetadataHeaderSummary}}
             </span>
             <span v-if="activeTool==='bug-helper' && bugStats.units" class="text-xs bg-white/20 px-2 py-1 rounded">
                 {{bugStats.units}} units &middot; {{bugStats.sourceRecords}} sources &middot; {{bugStats.locales}} langs
@@ -976,17 +977,15 @@
                         <span class="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold tracking-wider">NEW</span>
                     </h2>
                     <p class="text-xs text-gray-500 mt-1 max-w-3xl">
-                        Paste a batch of UNS keys. The tool pulls out unique
-                        <span class="text-indigo-700 font-semibold">Template IDs (TID)</span>,
-                        <span class="text-indigo-700 font-semibold">Brand IDs</span>, and what each key targets —
-                        <span class="text-indigo-700 font-semibold">email html</span> body vs
-                        <span class="text-amber-600 font-semibold">email subject</span> — and gives you four cross-cuts
-                        to spot coverage gaps at a glance.
+                        Paste UNS or General localization keys. UNS keys are analyzed by template, brand, locale, and content kind;
+                        General keys are analyzed by <span class="text-indigo-700 font-semibold">project</span>,
+                        <span class="text-indigo-700 font-semibold">hash</span>,
+                        <span class="text-indigo-700 font-semibold">feature / key path</span>, and explicit brand metadata when present.
                     </p>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
                     <!-- Partial/template classification: sync names from the local UNS clone -->
-                    <div class="flex items-center gap-1">
+                    <div v-if="!generalStats.total || unsStats.total" class="flex items-center gap-1">
                         <button @click="syncUnsRepo" :disabled="unsRepoLoading"
                             class="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                             :title="unsHasRepoData ? 'Re-read partials &amp; templates from the local UNS clone (master)' : 'Read partials &amp; templates from the local UNS clone so TIDs can be labelled'">
@@ -1006,12 +1005,12 @@
                             <span class="text-gray-300">·</span> {{unsRepoSourceShort}}
                         </span>
                     </div>
-                    <button @click="unsShowBrandDict = !unsShowBrandDict"
+                    <button v-if="!generalStats.total || unsStats.total" @click="unsShowBrandDict = !unsShowBrandDict"
                         class="flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200 transition">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
                         Brand dictionary ({{unsBrandDictEntries.length}})
                     </button>
-                    <button @click="exportUnsJson" :disabled="!unsStats.total"
+                    <button @click="exportUnsJson" :disabled="!keyMetadataStats.total"
                         class="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded text-xs font-medium hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
                         Export JSON
@@ -1020,7 +1019,7 @@
             </div>
 
             <!-- Brand dictionary panel (collapsible, CRUD) -->
-            <div v-if="unsShowBrandDict" class="px-6 py-4 bg-indigo-50 border-b border-indigo-100">
+            <div v-if="unsShowBrandDict && (!generalStats.total || unsStats.total)" class="px-6 py-4 bg-indigo-50 border-b border-indigo-100">
                 <div class="flex items-start justify-between flex-wrap gap-2 mb-3">
                     <div>
                         <div class="text-[11px] font-semibold text-indigo-700 uppercase tracking-wider">Brand dictionary</div>
@@ -1117,7 +1116,7 @@
             </div>
 
             <!-- Repo classification panel (collapsible): point at the local UNS clone -->
-            <div v-if="unsShowRepoConfig" class="px-6 py-4 bg-slate-50 border-b border-slate-200">
+            <div v-if="unsShowRepoConfig && (!generalStats.total || unsStats.total)" class="px-6 py-4 bg-slate-50 border-b border-slate-200">
                 <div class="flex items-start justify-between flex-wrap gap-2 mb-3">
                     <div>
                         <div class="text-[11px] font-semibold text-slate-700 uppercase tracking-wider">Partial / template classification</div>
@@ -1196,34 +1195,37 @@
                         <div class="flex items-center gap-2">
                             <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2m0 0a2 2 0 012-2h2a2 2 0 012 2M8 4h8m-8 6h.01M12 10h4m-8 4h.01M12 14h4m-8 4h.01M12 18h4"/></svg>
                             <div>
-                                <div class="text-sm font-semibold text-gray-800">Paste UNS keys</div>
+                                <div class="text-sm font-semibold text-gray-800">Paste UNS or General keys</div>
                                 <div class="text-[11px] text-gray-500">
-                                    One key per line — matches
-                                    <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">RingCentral.uns.&lt;hash&gt;.&lt;TID&gt;__&lt;kind&gt;__&lt;BrandID&gt;__&lt;locale&gt;</code>
+                                    One key per line — accepts
+                                    <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">RingCentral.uns.&lt;hash&gt;.…</code>
+                                    or <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">RingCentral.&lt;project&gt;.&lt;32-char hash&gt;.&lt;key path&gt;</code>
                                 </div>
                             </div>
                         </div>
                         <div class="flex items-center gap-2 shrink-0">
                             <button @click="loadUnsSample" type="button"
-                                class="text-[11px] text-indigo-600 hover:text-indigo-800 hover:underline">Load sample</button>
+                                class="text-[11px] text-indigo-600 hover:text-indigo-800 hover:underline">UNS sample</button>
+                            <button @click="loadGeneralSample" type="button"
+                                class="text-[11px] text-indigo-600 hover:text-indigo-800 hover:underline">General sample</button>
                             <button @click="unsKeysInput = ''" type="button" :disabled="!unsKeysInput"
                                 class="text-[11px] text-gray-500 hover:text-gray-700 hover:underline disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline">Clear</button>
                         </div>
                     </div>
                     <div class="p-4">
                         <textarea v-model="unsKeysInput" rows="10" spellcheck="false"
-                            placeholder="RingCentral.uns.1b165ed92251502e268e4a4708e6a6a0.vodafoneAddInventoryAdminInfo__email_html__7010__en_US&#10;RingCentral.uns.01b5dd78db597a72c2aa49fa7b762d08.creditCardExpiration__email_html__1210__en_US&#10;..."
+                            placeholder="RingCentral.jedi.4ac1be6d554451a0415e6f74fc494588.DispositionCodeRequired&#10;RingCentral.mobileWeb.0a6876c6242797584e9063a58bde9578.extensions.ANNOUNCEMENT_ONLY_EXT_ADD_PROMPT&#10;RingCentral.uns.01b5dd78db597a72c2aa49fa7b762d08.creditCardExpiration__email_html__1210__en_US"
                             class="w-full px-3 py-2 text-xs border border-gray-300 rounded-md font-mono leading-relaxed resize-y outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"></textarea>
                         <div class="mt-2 flex items-center justify-between flex-wrap gap-2">
                             <div class="text-[11px] text-gray-500">
-                                <template v-if="unsParsed.parsed.length">
-                                    <span class="font-semibold text-gray-700">{{unsParsed.parsed.length}}</span>
-                                    key{{unsParsed.parsed.length === 1 ? '' : 's'}} recognized
-                                    <span v-if="unsParsed.unparsed.length" class="text-amber-600 ml-1">
-                                        · {{unsParsed.unparsed.length}} line{{unsParsed.unparsed.length === 1 ? '' : 's'}} unparsed
+                                <template v-if="keyMetadataParsed.parsed.length">
+                                    <span class="font-semibold text-gray-700">{{keyMetadataParsed.parsed.length}}</span>
+                                    key{{keyMetadataParsed.parsed.length === 1 ? '' : 's'}} recognized
+                                    <span v-if="keyMetadataParsed.unparsed.length" class="text-amber-600 ml-1">
+                                        · {{keyMetadataParsed.unparsed.length}} line{{keyMetadataParsed.unparsed.length === 1 ? '' : 's'}} unparsed
                                     </span>
-                                    <span v-if="unsParsed.duplicates" class="text-indigo-600 font-medium ml-1">
-                                        · {{unsParsed.duplicates}} duplicate{{unsParsed.duplicates === 1 ? '' : 's'}} removed
+                                    <span v-if="keyMetadataParsed.duplicates" class="text-indigo-600 font-medium ml-1">
+                                        · {{keyMetadataParsed.duplicates}} duplicate{{keyMetadataParsed.duplicates === 1 ? '' : 's'}} removed
                                     </span>
                                     <span class="text-gray-400 ml-1">· auto-parsing as you type</span>
                                 </template>
@@ -1234,11 +1236,11 @@
                                     <span class="text-gray-400">Paste keys above to begin</span>
                                 </template>
                             </div>
-                            <details v-if="unsParsed.unparsed.length" class="text-[11px]">
+                            <details v-if="keyMetadataParsed.unparsed.length" class="text-[11px]">
                                 <summary class="cursor-pointer text-amber-600 hover:text-amber-700">View unparsed</summary>
                                 <div class="mt-1 bg-amber-50 border border-amber-200 rounded p-2 font-mono text-[10px] max-h-32 overflow-y-auto">
-                                    <div v-for="(l, i) in unsParsed.unparsed.slice(0, 50)" :key="i" class="break-all text-amber-800">{{l}}</div>
-                                    <div v-if="unsParsed.unparsed.length > 50" class="text-amber-500 italic mt-1">…and {{unsParsed.unparsed.length - 50}} more</div>
+                                    <div v-for="(l, i) in keyMetadataParsed.unparsed.slice(0, 50)" :key="i" class="break-all text-amber-800">{{l}}</div>
+                                    <div v-if="keyMetadataParsed.unparsed.length > 50" class="text-amber-500 italic mt-1">…and {{keyMetadataParsed.unparsed.length - 50}} more</div>
                                 </div>
                             </details>
                         </div>
@@ -1246,23 +1248,163 @@
                 </div>
 
                 <!-- Empty state -->
-                <div v-if="!unsStats.total" class="bg-white border border-gray-200 rounded-lg p-10 text-center text-gray-400">
+                <div v-if="!keyMetadataStats.total" class="bg-white border border-gray-200 rounded-lg p-10 text-center text-gray-400">
                     <svg class="w-14 h-14 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-7 9h.01M14 14h2m-6 4h.01M14 18h2"/></svg>
-                    <p class="text-sm text-gray-500 font-medium">Paste some UNS keys to extract metadata</p>
-                    <p class="text-xs mt-1">Stats and the matrix view will appear here once keys are recognized.</p>
+                    <p class="text-sm text-gray-500 font-medium">Paste some UNS or General keys to extract metadata</p>
+                    <p class="text-xs mt-1">The matching dashboard will appear here once keys are recognized.</p>
                 </div>
 
                 <!-- Dedup notice — shown whenever verbatim-identical keys were collapsed -->
-                <div v-if="unsStats.total && unsParsed.duplicates"
+                <div v-if="keyMetadataStats.total && keyMetadataParsed.duplicates"
                     class="flex items-start gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-2.5 text-xs text-indigo-800">
                     <svg class="w-4 h-4 mt-px shrink-0 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
                     <span>
                         Results are de-duplicated:
-                        <span class="font-semibold">{{unsParsed.duplicates}}</span>
-                        verbatim-identical key{{unsParsed.duplicates === 1 ? ' was' : 's were'}} removed,
-                        leaving <span class="font-semibold">{{unsStats.total}}</span> unique key{{unsStats.total === 1 ? '' : 's'}}.
-                        Keys that share TID·kind·brand·locale but have a different hash are kept as distinct.
+                        <span class="font-semibold">{{keyMetadataParsed.duplicates}}</span>
+                        verbatim-identical key{{keyMetadataParsed.duplicates === 1 ? ' was' : 's were'}} removed,
+                        leaving <span class="font-semibold">{{keyMetadataStats.total}}</span> unique key{{keyMetadataStats.total === 1 ? '' : 's'}}.
+                        Keys with different hashes or paths are kept as distinct.
                     </span>
+                </div>
+
+                <!-- General-key dashboard -->
+                <div v-if="generalStats.total" class="space-y-4">
+                    <div v-if="unsStats.total" class="flex items-start gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-2.5 text-xs text-indigo-800">
+                        <span class="font-semibold">Mixed input:</span>
+                        <span>{{generalStats.total}} General and {{unsStats.total}} UNS keys are shown in separate dashboards below.</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+                            <div class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">General keys</div>
+                            <div class="text-3xl font-bold text-gray-800 tabular-nums mt-1">{{generalStats.total}}</div>
+                            <div class="text-[10px] text-gray-400 mt-0.5">unique recognized keys</div>
+                        </div>
+                        <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+                            <div class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Projects</div>
+                            <div class="text-3xl font-bold text-indigo-600 tabular-nums mt-1">{{generalStats.projectCount}}</div>
+                            <div class="text-[10px] text-gray-400 mt-0.5">deduplicated project names</div>
+                        </div>
+                        <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+                            <div class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Brands</div>
+                            <div class="text-3xl font-bold text-indigo-600 tabular-nums mt-1">{{generalStats.brandCount}}</div>
+                            <div class="text-[10px] mt-0.5" :class="generalStats.brandCoverage.unresolvedKeys ? 'text-amber-600' : 'text-gray-400'">
+                                {{generalStats.brandCoverage.unresolvedKeys}} key{{generalStats.brandCoverage.unresolvedKeys === 1 ? '' : 's'}} need mapping
+                            </div>
+                        </div>
+                        <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+                            <div class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Hashes</div>
+                            <div class="text-3xl font-bold text-indigo-600 tabular-nums mt-1">{{generalStats.uniqueHashes}}</div>
+                            <div class="text-[10px] text-gray-400 mt-0.5">unique 32-char values</div>
+                        </div>
+                        <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+                            <div class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Features</div>
+                            <div class="text-3xl font-bold text-emerald-600 tabular-nums mt-1">{{generalStats.uniqueFeatures}}</div>
+                            <div class="text-[10px] text-gray-400 mt-0.5">root feature / key groups</div>
+                        </div>
+                        <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+                            <div class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">#@# keys</div>
+                            <div class="text-3xl font-bold text-amber-600 tabular-nums mt-1">{{generalStats.specialDelimiterKeys}}</div>
+                            <div class="text-[10px] text-gray-400 mt-0.5">special semantic delimiter</div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                            <div class="px-4 py-3 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between">
+                                <span class="text-sm font-semibold text-indigo-800">Project coverage</span>
+                                <span class="text-[10px] text-indigo-500">keys · hashes · features</span>
+                            </div>
+                            <div class="divide-y divide-gray-100">
+                                <div v-for="project in generalStats.projects" :key="project.project" class="px-4 py-3 flex items-center justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <div class="font-mono text-sm font-semibold text-gray-800 truncate">{{project.project}}</div>
+                                        <div class="text-[10px] text-gray-400 mt-0.5">
+                                            {{project.uniqueHashes}} hash{{project.uniqueHashes === 1 ? '' : 'es'}} · {{project.uniqueFeatures}} feature{{project.uniqueFeatures === 1 ? '' : 's'}}
+                                        </div>
+                                    </div>
+                                    <div class="text-right shrink-0">
+                                        <div class="text-xl font-bold text-indigo-600 tabular-nums">{{project.count}}</div>
+                                        <div class="text-[9px] text-gray-400 uppercase">keys</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                            <div class="px-4 py-3 bg-emerald-50 border-b border-emerald-100 flex items-center justify-between">
+                                <span class="text-sm font-semibold text-emerald-800">Feature / key-path metadata</span>
+                                <span class="text-[10px] text-emerald-600">depth {{generalStats.pathDepth.min}}–{{generalStats.pathDepth.max}} · avg {{generalStats.pathDepth.average}}</span>
+                            </div>
+                            <div class="p-3 flex flex-wrap gap-1.5">
+                                <span v-for="feature in generalStats.features" :key="feature.feature"
+                                    class="inline-flex items-center gap-1.5 px-2 py-1 bg-gray-50 border border-gray-200 rounded">
+                                    <span class="font-mono text-[11px] text-gray-700">{{feature.feature}}</span>
+                                    <span class="text-[10px] font-semibold text-emerald-700 tabular-nums">{{feature.count}}</span>
+                                </span>
+                            </div>
+                            <div class="px-4 py-3 border-t border-gray-100 text-[11px]">
+                                <template v-if="generalStats.brands.length">
+                                    <span class="font-semibold text-gray-600">Resolved brands:</span>
+                                    <span v-for="brand in generalStats.brands" :key="brand.brandId" class="ml-2 font-mono text-indigo-700">{{brand.brandId}} ({{brand.count}})</span>
+                                </template>
+                                <template v-else>
+                                    <span class="font-semibold text-amber-700">Brand is not encoded in these keys.</span>
+                                    <span class="text-gray-500 ml-1">Each row exposes <code class="font-mono bg-gray-100 px-1 rounded">project:hash</code> as a lookup key for a resource-map or brand dictionary join.</span>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                        <div class="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+                            <div>
+                                <div class="text-sm font-semibold text-gray-700">Parsed General keys</div>
+                                <div class="text-[10px] text-gray-400">Hash, feature, full key path, explicit brand metadata, and #@# tokenization</div>
+                            </div>
+                            <details class="text-[11px]">
+                                <summary class="cursor-pointer text-indigo-600 hover:text-indigo-800">View raw JSON</summary>
+                                <div class="absolute right-4 mt-2 z-20 w-80 max-h-96 overflow-auto bg-gray-900 rounded-lg shadow-xl p-3">
+                                    <pre class="text-green-400 text-[10px] font-mono leading-relaxed">{{generalRawJson}}</pre>
+                                </div>
+                            </details>
+                        </div>
+                        <div class="overflow-x-auto max-h-[600px]">
+                            <table class="w-full text-xs border-collapse">
+                                <thead class="sticky top-0 bg-gray-50 z-10">
+                                    <tr class="text-left text-[10px] uppercase tracking-wider text-gray-500">
+                                        <th class="px-3 py-2 border-b border-gray-200">Project</th>
+                                        <th class="px-3 py-2 border-b border-gray-200">Hash</th>
+                                        <th class="px-3 py-2 border-b border-gray-200">Feature</th>
+                                        <th class="px-3 py-2 border-b border-gray-200">Key path</th>
+                                        <th class="px-3 py-2 border-b border-gray-200">Brand</th>
+                                        <th class="px-3 py-2 border-b border-gray-200">Flags</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100">
+                                    <tr v-for="item in keyMetadataParsed.general" :key="item.raw" class="hover:bg-gray-50">
+                                        <td class="px-3 py-2 font-mono font-semibold text-indigo-700 whitespace-nowrap">{{item.project}}</td>
+                                        <td class="px-3 py-2 font-mono text-gray-500 whitespace-nowrap" :title="item.hash">{{item.hash.slice(0, 8)}}…</td>
+                                        <td class="px-3 py-2 font-mono text-emerald-700 whitespace-nowrap">{{item.feature}}</td>
+                                        <td class="px-3 py-2 font-mono text-gray-700 break-all min-w-[260px]">
+                                            <div>{{item.keyPath}}</div>
+                                            <div v-if="item.specialTokens.length" class="mt-1 flex flex-wrap gap-1">
+                                                <span v-for="token in item.specialTokens" :key="token" class="px-1 py-0.5 bg-amber-50 text-amber-700 rounded text-[9px]">{{token}}</span>
+                                            </div>
+                                        </td>
+                                        <td class="px-3 py-2 whitespace-nowrap">
+                                            <span v-if="item.brandId" class="font-mono text-indigo-700">{{item.brandId}}</span>
+                                            <span v-else class="text-gray-400" :title="'Lookup: ' + item.brandLookupKey">needs map</span>
+                                        </td>
+                                        <td class="px-3 py-2 whitespace-nowrap">
+                                            <span v-if="item.hasSpecialDelimiter" class="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-bold">#@#</span>
+                                            <span class="ml-1 px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px]">depth {{item.pathDepth}}</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Stats grid -->
@@ -2669,6 +2811,14 @@ createApp({
             'RingCentral.uns.ab0d956194b1f0923347866cc2f186fc.callQueueManagersLoginInfo__email_subject__7710__en_US',
         ].join('\n');
 
+        const GENERAL_SAMPLE_KEYS = [
+            'RingCentral.jedi.4ac1be6d554451a0415e6f74fc494588.DispositionCodeRequired',
+            'RingCentral.jedi.c90bb9859cb0a22d4efea3e59c7cc8df.AuditTrail_#@#*Template*#@#_ChangeByEmbeddedApp',
+            'RingCentral.mobileWeb.0a6876c6242797584e9063a58bde9578.extensions.ANNOUNCEMENT_ONLY_EXT_ADD_PROMPT',
+            'RingCentral.webModule.51df603876c78c1a572226b0e97253a3.settings.ADMIN_PORTAL_TITLE',
+            'RingCentral.webModuleCore.842bedafdc8ba24d9dfc90240c0d55ad.navigation.REPORTS_MENU_LABEL',
+        ].join('\n');
+
         // Sample UTM URLs covering both shapes the UNS Template Manager produces:
         //   (a) /view/<key>?…  — opening a single template
         //   (b) /new?~brand=…&~locale=…&~notificationId=…  — creation form
@@ -3114,26 +3264,7 @@ createApp({
         // camelCase template identifier; kind: e.g. email_html / email_subject;
         // BrandID: digits; locale: BCP-47-ish (e.g. en_US, fr-CA).
         function parseUnsKey(line) {
-            const trimmed = (line || '').trim();
-            if (!trimmed) return null;
-
-            // Strip leading bullet markers, leading/trailing quotes, trailing commas
-            const cleaned = trimmed
-                .replace(/^[\s\-\*•‣◦]+/, '')
-                .replace(/^["'`]|["'`,]$/g, '');
-
-            const head = cleaned.match(/^([A-Za-z0-9_]+)\.uns\.([a-fA-F0-9]+)\.(.+)$/);
-            if (!head) return null;
-            const [, namespace, hash, rest] = head;
-
-            const parts = rest.split('__');
-            if (parts.length !== 4) return null;
-
-            const [tid, kind, brandId, locale] = parts;
-            if (!UNS_BRAND_ID_RE.test(brandId)) return null;
-            if (!tid || !kind) return null;
-
-            return { raw: cleaned, namespace, hash, tid, kind, brandId, locale };
+            return KeyMetadataParser.parseUnsKey(line);
         }
 
         function unsBrandName(brandId) {
@@ -3285,27 +3416,34 @@ createApp({
             if (added) showToast(`Added ${added} blank brand row${added === 1 ? '' : 's'} — fill in the names`);
         }
 
-        // Parse the raw textarea into structured items + unparsed line list.
-        // Auto-recomputes via Vue reactivity whenever the textarea changes.
-        const unsParsed = computed(() => {
-            const lines = (unsKeysInput.value || '').split(/\r?\n/);
-            const parsed = [];
-            const unparsed = [];
-            let duplicates = 0; // count of verbatim-identical keys dropped
-            const seen = new Set();
-            // Dedupe only truly identical keys — the hash is part of the identity
-            // because it pins the resource path, so two keys that share
-            // TID/kind/brand/locale but differ by hash are kept as distinct.
-            for (const raw of lines) {
-                if (!raw.trim()) continue;
-                const p = parseUnsKey(raw);
-                if (!p) { unparsed.push(raw); continue; }
-                const dedupKey = `${p.namespace}|${p.hash}|${p.tid}|${p.kind}|${p.brandId}|${p.locale}`;
-                if (seen.has(dedupKey)) { duplicates++; continue; }
-                seen.add(dedupKey);
-                parsed.push(p);
-            }
-            return { parsed, unparsed, duplicates };
+        // Parse UNS and General keys in one pass. The pure parser owns
+        // normalization and hash-aware de-duplication; the existing UNS views
+        // consume only its UNS slice while the General dashboard uses its own.
+        const keyMetadataParsed = computed(() =>
+            KeyMetadataParser.parseKeyBatch(unsKeysInput.value || '')
+        );
+
+        const unsParsed = computed(() => ({
+            parsed: keyMetadataParsed.value.uns,
+            unparsed: keyMetadataParsed.value.unparsed,
+            duplicates: keyMetadataParsed.value.duplicatesByType.uns,
+        }));
+
+        const generalStats = computed(() =>
+            KeyMetadataParser.summarizeGeneralKeys(keyMetadataParsed.value.general)
+        );
+
+        const keyMetadataStats = computed(() => ({
+            total: keyMetadataParsed.value.parsed.length,
+            uns: keyMetadataParsed.value.uns.length,
+            general: keyMetadataParsed.value.general.length,
+        }));
+
+        const keyMetadataHeaderSummary = computed(() => {
+            const stats = keyMetadataStats.value;
+            if (stats.uns && stats.general) return stats.total + ' keys · ' + stats.uns + ' UNS · ' + stats.general + ' general';
+            if (stats.general) return stats.general + ' keys · ' + generalStats.value.projectCount + ' projects · ' + generalStats.value.brandCount + ' brands';
+            return unsStats.value.total + ' keys · ' + unsStats.value.tids + ' TIDs · ' + unsStats.value.brands + ' brands';
         });
 
         // High-level stats shown in the 5-card row.
@@ -3745,6 +3883,76 @@ createApp({
         }
 
         // ═══════════════════════════════════════
+        const generalRawJson = computed(() => JSON.stringify(buildGeneralExport(), null, 2));
+
+        function buildGeneralExport() {
+            const items = keyMetadataParsed.value.general;
+            const stats = generalStats.value;
+            return {
+                generated: new Date().toISOString(),
+                keyType: 'general',
+                summary: {
+                    totalKeys: stats.total,
+                    duplicatesRemoved: keyMetadataParsed.value.duplicatesByType.general,
+                    uniqueProjects: stats.projectCount,
+                    uniqueBrands: stats.brandCount,
+                    unresolvedBrandKeys: stats.brandCoverage.unresolvedKeys,
+                    uniqueHashes: stats.uniqueHashes,
+                    uniqueFeatures: stats.uniqueFeatures,
+                    uniqueKeyPaths: stats.uniqueKeyPaths,
+                    specialDelimiterKeys: stats.specialDelimiterKeys,
+                    pathDepth: stats.pathDepth,
+                },
+                projects: stats.projects,
+                brands: stats.brands,
+                hashes: stats.hashes,
+                features: stats.features,
+                brandResolution: {
+                    strategy: 'explicit-only',
+                    note: 'General keys have no universal brand slot. Explicit suffix/path encodings are parsed; otherwise join brandLookupKey (project:hash) to an external resource map or brand dictionary.',
+                },
+                raw: items.map(item => ({
+                    namespace: item.namespace,
+                    project: item.project,
+                    hash: item.hash,
+                    feature: item.feature,
+                    keyPath: item.keyPath,
+                    keyName: item.keyName,
+                    leafName: item.leafName,
+                    pathDepth: item.pathDepth,
+                    hasSpecialDelimiter: item.hasSpecialDelimiter,
+                    specialTokens: item.specialTokens,
+                    brandId: item.brandId,
+                    brandName: item.brandName,
+                    brandSource: item.brandSource,
+                    brandLookupKey: item.brandLookupKey,
+                    locale: item.locale,
+                    key: item.raw,
+                })),
+            };
+        }
+
+        function buildKeyMetadataExport() {
+            const hasUns = unsStats.value.total > 0;
+            const hasGeneral = generalStats.value.total > 0;
+            if (hasUns && !hasGeneral) return buildUnsExport();
+            if (hasGeneral && !hasUns) return buildGeneralExport();
+            return {
+                generated: new Date().toISOString(),
+                keyType: 'mixed',
+                summary: {
+                    totalKeys: keyMetadataStats.value.total,
+                    unsKeys: keyMetadataStats.value.uns,
+                    generalKeys: keyMetadataStats.value.general,
+                    duplicatesRemoved: keyMetadataParsed.value.duplicates,
+                    unparsedLines: keyMetadataParsed.value.unparsed.length,
+                },
+                uns: buildUnsExport(),
+                general: buildGeneralExport(),
+                unparsed: keyMetadataParsed.value.unparsed,
+            };
+        }
+
         //  LOGGING
         // ═══════════════════════════════════════
         function log(msg, type = 'info') {
@@ -5011,7 +5219,12 @@ createApp({
 
         function loadUnsSample() {
             unsKeysInput.value = UNS_SAMPLE_KEYS;
-            showToast('Sample keys loaded');
+            showToast('UNS sample keys loaded');
+        }
+
+        function loadGeneralSample() {
+            unsKeysInput.value = GENERAL_SAMPLE_KEYS;
+            showToast('General sample keys loaded');
         }
 
         // ═══════════════════════════════════════
@@ -5803,16 +6016,19 @@ createApp({
         }
 
         function exportUnsJson() {
-            if (!unsStats.value.total) return;
-            const data = buildUnsExport();
+            if (!keyMetadataStats.value.total) return;
+            const data = buildKeyMetadataExport();
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `uns-key-metadata-${new Date().toISOString().slice(0, 10)}.json`;
+            const prefix = unsStats.value.total && generalStats.value.total
+                ? 'mixed-key-metadata'
+                : (generalStats.value.total ? 'general-key-metadata' : 'uns-key-metadata');
+            a.download = prefix + '-' + new Date().toISOString().slice(0, 10) + '.json';
             a.click();
             URL.revokeObjectURL(url);
-            showToast('UNS metadata JSON exported');
+            showToast('Key metadata JSON exported');
         }
 
         return {
@@ -5838,7 +6054,9 @@ createApp({
             appVersion, appHostLabel,
             isUnsTool, headerBranding,
             unsKeysInput, unsView, unsKindFilter, unsSearch, unsShowBrandDict,
+            keyMetadataParsed, keyMetadataStats, keyMetadataHeaderSummary,
             unsParsed, unsStats, unsByTemplateView, unsByBrandView, unsMatrix, unsMatrixFiltered,
+            generalStats, generalRawJson,
             unsRawJson, unsBrandName, unsBrandDictEntries,
             unsBrandDict, unsNewBrandId, unsNewBrandName, unsBrandError,
             unsUnmappedBrands, unsBrandImportInput,
@@ -5851,7 +6069,7 @@ createApp({
             addBrandEntry, updateBrandEntry, deleteBrandEntry,
             clearBrandDict, resetBrandDict, exportBrandDict, openBrandImport, handleBrandImport,
             importUnmappedBrands,
-            selectTool, loadUnsSample, exportUnsJson,
+            selectTool, loadUnsSample, loadGeneralSample, exportUnsJson,
             // UTM Analysis
             utmUrlInput, utmParsedList, utmOkList, utmCombined, loadUtmSample,
             jiraDomainUrl, jiraDomainHost,

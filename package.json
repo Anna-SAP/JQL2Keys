@@ -11,6 +11,7 @@
   "pkg": {
     "assets": [
       "jira-l10n-key-extractor.html",
+      "key-metadata-parser.js",
       "vendor/tailwind.min.css",
       "vendor/vue.global.prod.js",
       "vendor/jszip.min.js"
