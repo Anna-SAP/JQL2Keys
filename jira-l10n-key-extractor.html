@@ -1264,7 +1264,44 @@
                         verbatim-identical key{{keyMetadataParsed.duplicates === 1 ? ' was' : 's were'}} removed,
                         leaving <span class="font-semibold">{{keyMetadataStats.total}}</span> unique key{{keyMetadataStats.total === 1 ? '' : 's'}}.
                         Keys with different hashes or paths are kept as distinct.
+                        The full de-duplicated list is shown below.
                     </span>
+                </div>
+
+                <!-- De-duplicated key list — the clean, Excel-ready list users copy back out -->
+                <div v-if="keyMetadataStats.total" class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                    <div class="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+                        <button @click="unsDedupListOpen = !unsDedupListOpen" type="button" :aria-expanded="unsDedupListOpen" class="flex items-center gap-2 text-left group">
+                            <svg class="w-3.5 h-3.5 text-gray-400 transition-transform shrink-0" :class="unsDedupListOpen ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                            <div>
+                                <div class="text-sm font-semibold text-gray-800">De-duplicated key list</div>
+                                <div class="text-[11px] text-gray-500">
+                                    {{keyMetadataStats.total}} unique key{{keyMetadataStats.total === 1 ? '' : 's'}} in paste order<span v-if="keyMetadataParsed.duplicates"> · {{keyMetadataParsed.duplicates}} duplicate{{keyMetadataParsed.duplicates === 1 ? '' : 's'}} removed</span> — one key per row, ready to paste into Excel
+                                </div>
+                            </div>
+                        </button>
+                        <button @click="copyDedupKeys" type="button"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-medium rounded-md shrink-0">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                            Copy all ({{keyMetadataStats.total}})
+                        </button>
+                    </div>
+                    <div v-show="unsDedupListOpen" class="overflow-auto max-h-96">
+                        <table class="w-full text-xs border-collapse">
+                            <tbody>
+                                <tr v-for="(key, i) in dedupKeyList" :key="key" class="group hover:bg-indigo-50">
+                                    <td class="w-10 px-2 py-1.5 text-right font-mono text-[10px] text-gray-400 bg-gray-50 border-r border-b border-gray-200 select-none tabular-nums align-top">{{i + 1}}</td>
+                                    <td class="px-3 py-1.5 font-mono text-[11px] text-gray-700 break-all border-b border-gray-100">{{key}}</td>
+                                    <td class="w-8 px-1 py-1.5 border-b border-gray-100 align-top">
+                                        <button @click="copyText(key)" type="button" title="Copy this key" aria-label="Copy this key"
+                                            class="text-gray-300 hover:text-indigo-600 transition-colors">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
                 <!-- General-key dashboard -->
@@ -3438,6 +3475,18 @@ createApp({
             uns: keyMetadataParsed.value.uns.length,
             general: keyMetadataParsed.value.general.length,
         }));
+
+        // De-duplicated key list panel. Rows keep first-seen paste order so the
+        // list lines up with the user's original spreadsheet column.
+        const unsDedupListOpen = ref(true);
+        const dedupKeyList = computed(() =>
+            keyMetadataParsed.value.parsed.map(item => item.raw)
+        );
+
+        function copyDedupKeys() {
+            if (!dedupKeyList.value.length) return;
+            copyText(dedupKeyList.value.join('\n'));
+        }
 
         const keyMetadataHeaderSummary = computed(() => {
             const stats = keyMetadataStats.value;
@@ -6055,6 +6104,7 @@ createApp({
             isUnsTool, headerBranding,
             unsKeysInput, unsView, unsKindFilter, unsSearch, unsShowBrandDict,
             keyMetadataParsed, keyMetadataStats, keyMetadataHeaderSummary,
+            unsDedupListOpen, dedupKeyList, copyDedupKeys,
             unsParsed, unsStats, unsByTemplateView, unsByBrandView, unsMatrix, unsMatrixFiltered,
             generalStats, generalRawJson,
             unsRawJson, unsBrandName, unsBrandDictEntries,
