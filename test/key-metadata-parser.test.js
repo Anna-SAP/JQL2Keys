@@ -93,6 +93,16 @@ test('parseUnsKey extracts Tranzor keys without hash or locale', () => {
     assert.equal(item.locale, null);
 });
 
+test('parseUnsKey accepts newTemplateStorage-prefixed Tranzor keys', () => {
+    const item = parseUnsKey('common.uns.new.meetingRecordingAvailable__email_html__1210');
+    assert.ok(item);
+    assert.equal(item.format, 'tranzor');
+    assert.equal(item.tid, 'new.meetingRecordingAvailable');
+    assert.equal(item.tidLeaf, 'meetingRecordingAvailable');
+    assert.equal(item.kind, 'email_html');
+    assert.equal(item.brandId, '1210');
+});
+
 test('parseUnsKey keeps dotted name segments on Tranzor keys', () => {
     const item = parseUnsKey(
         'common.uns.new.partials.footerLogoTosAndCopyright__email_html__1210'

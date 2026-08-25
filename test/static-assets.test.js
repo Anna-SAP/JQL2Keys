@@ -48,4 +48,15 @@ test('server exposes every bundled browser dependency', async (t) => {
         assert.match(response.headers.get('content-type') || '', new RegExp('^' + contentType));
         assert.ok((await response.arrayBuffer()).byteLength > 1000, assetPath + ' is unexpectedly small');
     }
+
+    const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+    const home = await fetch(baseUrl + '/');
+    assert.equal(home.status, 200);
+    const homeHtml = await home.text();
+    assert.match(homeHtml, new RegExp('key-metadata-parser\\.js\\?v=' + version.replace(/\./g, '\\.')));
+    assert.match(homeHtml, new RegExp("const appVersion = '" + version.replace(/\./g, '\\.') + "'"));
+
+    const parser = await fetch(baseUrl + '/key-metadata-parser.js?v=' + version);
+    assert.equal(parser.status, 200);
+    assert.match(parser.headers.get('cache-control') || '', /no-cache/i);
 });
