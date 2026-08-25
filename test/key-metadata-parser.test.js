@@ -74,6 +74,10 @@ test('parseUnsKey extracts legacy Opus keys with hash and locale', () => {
     assert.equal(item.hash, '37568911e605fa5474970da9ee5b4b7b');
     assert.equal(item.tid, 'airLeadDigest');
     assert.equal(item.tidLeaf, 'airLeadDigest');
+    assert.equal(item.namePath, 'airLeadDigest');
+    assert.equal(item.pathPrefix, '');
+    assert.equal(item.storageFolder, null);
+    assert.equal(item.isPartial, null);
     assert.equal(item.kind, 'email_html');
     assert.equal(item.brandId, '1210');
     assert.equal(item.locale, 'en_US');
@@ -88,33 +92,67 @@ test('parseUnsKey extracts Tranzor keys without hash or locale', () => {
     assert.equal(item.hash, null);
     assert.equal(item.tid, 'meetingRecordingAvailable');
     assert.equal(item.tidLeaf, 'meetingRecordingAvailable');
+    assert.equal(item.pathPrefix, '');
+    assert.equal(item.storageFolder, 'templateStorage');
+    assert.equal(item.isPartial, false);
     assert.equal(item.kind, 'email_subject');
     assert.equal(item.brandId, '2210');
     assert.equal(item.locale, null);
 });
 
-test('parseUnsKey accepts newTemplateStorage-prefixed Tranzor keys', () => {
+test('parseUnsKey treats new. as newTemplateStorage, not part of the TID', () => {
     const item = parseUnsKey('common.uns.new.meetingRecordingAvailable__email_html__1210');
     assert.ok(item);
     assert.equal(item.format, 'tranzor');
-    assert.equal(item.tid, 'new.meetingRecordingAvailable');
+    assert.equal(item.tid, 'meetingRecordingAvailable');
     assert.equal(item.tidLeaf, 'meetingRecordingAvailable');
+    assert.equal(item.namePath, 'new.meetingRecordingAvailable');
+    assert.equal(item.pathPrefix, 'new');
+    assert.equal(item.storageFolder, 'newTemplateStorage');
+    assert.equal(item.isPartial, false);
     assert.equal(item.kind, 'email_html');
     assert.equal(item.brandId, '1210');
 });
 
-test('parseUnsKey keeps dotted name segments on Tranzor keys', () => {
+test('parseUnsKey treats new.partials. as a newTemplateStorage partial', () => {
     const item = parseUnsKey(
         'common.uns.new.partials.footerLogoTosAndCopyright__email_html__1210'
     );
     assert.ok(item);
     assert.equal(item.format, 'tranzor');
     assert.equal(item.hash, null);
-    assert.equal(item.tid, 'new.partials.footerLogoTosAndCopyright');
+    assert.equal(item.tid, 'footerLogoTosAndCopyright');
     assert.equal(item.tidLeaf, 'footerLogoTosAndCopyright');
+    assert.equal(item.namePath, 'new.partials.footerLogoTosAndCopyright');
+    assert.equal(item.pathPrefix, 'new.partials');
+    assert.equal(item.storageFolder, 'newTemplateStorage');
+    assert.equal(item.isPartial, true);
     assert.equal(item.kind, 'email_html');
     assert.equal(item.brandId, '1210');
     assert.equal(item.locale, null);
+});
+
+test('parseUnsKey treats partials. as a templateStorage partial', () => {
+    const item = parseUnsKey('common.uns.partials.footerLogoTosAndCopyright__email_html__1210');
+    assert.ok(item);
+    assert.equal(item.tid, 'footerLogoTosAndCopyright');
+    assert.equal(item.pathPrefix, 'partials');
+    assert.equal(item.storageFolder, 'templateStorage');
+    assert.equal(item.isPartial, true);
+});
+
+test('batch parser merges the same TID from old and new storage', () => {
+    const result = parseKeyBatch([
+        'common.uns.bridgeDelegateGranted__email_html__1210',
+        'common.uns.new.bridgeDelegateGranted__email_html__1210',
+        'common.uns.new.partials.footerLogoTosAndCopyright__email_html__1210',
+        'common.uns.partials.footerLogoTosAndCopyright__email_html__7710',
+    ]);
+    assert.equal(result.uns.length, 4);
+    assert.deepEqual([...new Set(result.uns.map(item => item.tid))].sort(), [
+        'bridgeDelegateGranted',
+        'footerLogoTosAndCopyright',
+    ]);
 });
 
 test('parseUnsKey strips a trailing frequency count column', () => {
