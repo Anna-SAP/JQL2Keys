@@ -7,6 +7,7 @@ on:
       - 'JQL2Keys.js'
       - 'jira-cors-proxy.js'
       - 'jira-l10n-key-extractor.html'
+      - 'key-metadata-parser.js'
       - 'package.json'
       - 'vendor/**'
       - 'test/**'

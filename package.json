@@ -1,6 +1,6 @@
 {
   "name": "jql2keys",
-  "version": "1.9.1",
+  "version": "1.9.2",
   "description": "JQL2Keys — UNS Assistant: Jira key extraction, working-files packaging, and UNS key metadata tools",
   "main": "JQL2Keys.js",
   "bin": "JQL2Keys.js",
@@ -12,6 +12,7 @@
     "assets": [
       "jira-l10n-key-extractor.html",
       "key-metadata-parser.js",
+      "package.json",
       "vendor/tailwind.min.css",
       "vendor/vue.global.prod.js",
       "vendor/jszip.min.js"

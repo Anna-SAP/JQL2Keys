@@ -276,12 +276,39 @@ function loadHTML() {
     </body></html>`;
 }
 
-const HTML_CONTENT = loadHTML();
+function readAppVersion() {
+    const candidates = [
+        path.join(__dirname, 'package.json'),
+        path.join(process.cwd(), 'package.json'),
+    ];
+    for (const p of candidates) {
+        try {
+            const parsed = JSON.parse(fs.readFileSync(p, 'utf8'));
+            if (parsed && parsed.version) return String(parsed.version);
+        } catch {}
+    }
+    return '0.0.0';
+}
+
+const APP_VERSION = readAppVersion();
+
+// Parser JS used to be served as immutable for 1 year. EXE upgrades then
+// showed the new HTML while the browser kept the old parser, so new key
+// formats looked unrecognized. Stamp every bundled asset URL with the app
+// version so a release always fetches a fresh copy.
+function withVersionedAssets(html) {
+    const q = '?v=' + encodeURIComponent(APP_VERSION);
+    return html
+        .replace(/((?:href|src)=")(vendor\/[^"]+|key-metadata-parser\.js)(")/g, '$1$2' + q + '$3')
+        .replace(/const appVersion = '[^']+'/, "const appVersion = '" + APP_VERSION + "'");
+}
+
+const HTML_CONTENT = withVersionedAssets(loadHTML());
 // Core browser dependencies are bundled with the application. Keeping these
 // local is essential: if a CDN or VPN route is unavailable, Vue never mounts
 // and the v-cloaked SPA otherwise appears as a completely blank page.
 const STATIC_ASSET_DEFINITIONS = {
-    '/key-metadata-parser.js': { file: 'key-metadata-parser.js', directory: '', contentType: 'text/javascript; charset=utf-8' },
+    '/key-metadata-parser.js': { file: 'key-metadata-parser.js', directory: '', contentType: 'text/javascript; charset=utf-8', cacheControl: 'no-cache' },
     '/vendor/tailwind.min.css': { file: 'tailwind.min.css', directory: 'vendor', contentType: 'text/css; charset=utf-8' },
     '/vendor/vue.global.prod.js': { file: 'vue.global.prod.js', directory: 'vendor', contentType: 'text/javascript; charset=utf-8' },
     '/vendor/jszip.min.js': { file: 'jszip.min.js', directory: 'vendor', contentType: 'text/javascript; charset=utf-8' },
@@ -340,7 +367,7 @@ const server = http.createServer((req, res) => {
         res.writeHead(200, {
             'Content-Type': asset.contentType,
             'Content-Length': asset.content.length,
-            'Cache-Control': 'public, max-age=31536000, immutable',
+            'Cache-Control': asset.cacheControl || 'public, max-age=31536000, immutable',
         });
         return res.end(asset.content);
     }

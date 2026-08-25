@@ -31,6 +31,37 @@
         return segments[segments.length - 1] || tid;
     }
 
+    // Tranzor names may prefix the real template id with a storage path:
+    //   new.<tid>              → uns-app/newTemplateStorage/<tid>
+    //   new.partials.<tid>     → uns-app/newTemplateStorage/_partials/<tid>
+    //   partials.<tid>         → uns-app/templateStorage/_partials/<tid>
+    // Bare Tranzor names live in uns-app/templateStorage/<tid>.
+    // Legacy Opus names have no such prefix (storage is recovered from hash).
+    function splitUnsLocation(namePath) {
+        const segments = String(namePath || '').split('.').filter(Boolean);
+        let storageFolder = null;
+        let isPartial = null;
+        let i = 0;
+        if (segments[0] === 'new' && segments.length > 1) {
+            storageFolder = 'newTemplateStorage';
+            i = 1;
+        }
+        if (segments[i] === 'partials' && segments.length > i + 1) {
+            storageFolder = storageFolder || 'templateStorage';
+            isPartial = true;
+            i += 1;
+        } else if (storageFolder === 'newTemplateStorage') {
+            isPartial = false;
+        }
+        const tid = segments.slice(i).join('.');
+        return {
+            tid: tid || namePath,
+            pathPrefix: segments.slice(0, i).join('.'),
+            storageFolder,
+            isPartial,
+        };
+    }
+
     // Steal a leading hex path-hash from `<hash>.<name>`. Legacy Opus keys
     // always inject one; Tranzor names may contain dotted path segments
     // (`new.partials.footerLogo…`) that must not be mistaken for a hash.
@@ -66,8 +97,17 @@
         // 4-segment keys keep the previous "any hex run + dot" hash rule.
         // 3-segment keys only treat a 32-char hex prefix as a hash so that
         // names like `new.partials.footerLogoTosAndCopyright` stay intact.
-        const { hash, tid } = splitUnsHashPrefix(parts[0], hasLocale ? 1 : 32);
-        if (!tid) return null;
+        const { hash, tid: namePath } = splitUnsHashPrefix(parts[0], hasLocale ? 1 : 32);
+        if (!namePath) return null;
+
+        const loc = splitUnsLocation(namePath);
+        const isTranzor = !hash && !hasLocale;
+        let storageFolder = loc.storageFolder;
+        let isPartial = loc.isPartial;
+        if (isTranzor) {
+            if (storageFolder == null) storageFolder = 'templateStorage';
+            if (isPartial == null) isPartial = false;
+        }
 
         return {
             keyType: 'uns',
@@ -76,8 +116,12 @@
             namespace,
             prefix: namespace + '.uns',
             hash,
-            tid,
-            tidLeaf: tidLeafOf(tid),
+            namePath,
+            pathPrefix: loc.pathPrefix || '',
+            storageFolder,
+            isPartial,
+            tid: loc.tid,
+            tidLeaf: tidLeafOf(loc.tid),
             kind,
             brandId,
             locale,
@@ -368,6 +412,7 @@
         UNS_BRAND_ID_RE,
         UNS_HEAD_RE,
         cleanKeyLine,
+        splitUnsLocation,
         parseUnsKey,
         parseGeneralKey,
         parseKeyBatch,
