@@ -10,35 +10,74 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function createKeyMetadataParser() {
     const GENERAL_HASH_RE = /^[a-fA-F0-9]{32}$/;
     const UNS_BRAND_ID_RE = /^\d+(?:\.[A-Za-z0-9_]+)?$/;
+    const UNS_HEAD_RE = /^([A-Za-z][A-Za-z0-9_]*)\.uns\.(.+)$/;
     const GENERAL_KEY_RE = /^([A-Za-z][A-Za-z0-9_]*)\.([A-Za-z][A-Za-z0-9_-]*)\.([a-fA-F0-9]{32})\.([^\s.]+(?:\.[^\s.]+)*)$/;
     const SPECIAL_DELIMITER = '#@#';
 
     function cleanKeyLine(line) {
-        const trimmed = String(line || '').trim();
-        if (!trimmed) return '';
-        return trimmed
-            .replace(/^[\s\-*•‣◦]+/, '')
-            .replace(/^["'`]|["'`,]$/g, '');
+        let cleaned = String(line || '').trim();
+        if (!cleaned) return '';
+        cleaned = cleaned.replace(/^[\s\-*•‣◦]+/, '').trim();
+        // Spreadsheet / frequency pastes often append a count column
+        // (`key<tab>7` or `"key"  7`). Strip it before quote cleanup so a
+        // trailing count cannot pin a closing quote in place.
+        cleaned = cleaned.replace(/[\t ]+\d+\s*$/, '').trim();
+        cleaned = cleaned.replace(/^["'`]+/, '').replace(/["'`,]+$/, '').trim();
+        return cleaned;
+    }
+
+    function tidLeafOf(tid) {
+        const segments = String(tid || '').split('.');
+        return segments[segments.length - 1] || tid;
+    }
+
+    // Steal a leading hex path-hash from `<hash>.<name>`. Legacy Opus keys
+    // always inject one; Tranzor names may contain dotted path segments
+    // (`new.partials.footerLogo…`) that must not be mistaken for a hash.
+    function splitUnsHashPrefix(tid, minHashLength) {
+        const match = String(tid || '').match(/^([a-fA-F0-9]+)\.(.+)$/);
+        if (!match) return { hash: null, tid };
+        if (match[1].length < minHashLength) return { hash: null, tid };
+        return { hash: match[1], tid: match[2] };
     }
 
     function parseUnsKey(line) {
         const cleaned = cleanKeyLine(line);
         if (!cleaned) return null;
 
-        const head = cleaned.match(/^([A-Za-z0-9_]+)\.uns\.([a-fA-F0-9]+)\.(.+)$/);
+        const head = cleaned.match(UNS_HEAD_RE);
         if (!head) return null;
-        const [, namespace, hash, rest] = head;
+        const [, namespace, rest] = head;
         const parts = rest.split('__');
-        if (parts.length !== 4) return null;
+        // Legacy (Opus / L10n Portal):
+        //   <ns>.uns.<hash>.<name>__<type>__<brandId>__<locale>
+        // Tranzor (current):
+        //   <ns>.uns.<name>__<type>__<brandId>
+        //   <name> may itself contain dotted segments.
+        if (parts.length !== 3 && parts.length !== 4) return null;
 
-        const [tid, kind, brandId, locale] = parts;
-        if (!tid || !kind || !UNS_BRAND_ID_RE.test(brandId)) return null;
+        const hasLocale = parts.length === 4;
+        const kind = parts[1];
+        const brandId = parts[2];
+        const locale = hasLocale ? parts[3] : null;
+        if (!parts[0] || !kind || !UNS_BRAND_ID_RE.test(brandId)) return null;
+        if (hasLocale && !locale) return null;
+
+        // 4-segment keys keep the previous "any hex run + dot" hash rule.
+        // 3-segment keys only treat a 32-char hex prefix as a hash so that
+        // names like `new.partials.footerLogoTosAndCopyright` stay intact.
+        const { hash, tid } = splitUnsHashPrefix(parts[0], hasLocale ? 1 : 32);
+        if (!tid) return null;
+
         return {
             keyType: 'uns',
+            format: hash || hasLocale ? 'legacy' : 'tranzor',
             raw: cleaned,
             namespace,
+            prefix: namespace + '.uns',
             hash,
             tid,
+            tidLeaf: tidLeafOf(tid),
             kind,
             brandId,
             locale,
@@ -327,6 +366,7 @@
         GENERAL_KEY_RE,
         SPECIAL_DELIMITER,
         UNS_BRAND_ID_RE,
+        UNS_HEAD_RE,
         cleanKeyLine,
         parseUnsKey,
         parseGeneralKey,
