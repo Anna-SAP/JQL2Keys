@@ -981,6 +981,8 @@
                         General keys are analyzed by <span class="text-indigo-700 font-semibold">project</span>,
                         <span class="text-indigo-700 font-semibold">hash</span>,
                         <span class="text-indigo-700 font-semibold">feature / key path</span>, and explicit brand metadata when present.
+                        Both legacy <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">RingCentral.uns.&lt;hash&gt;.…</code>
+                        and current <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">common.uns.…</code> formats are recognized.
                     </p>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
@@ -1198,7 +1200,8 @@
                                 <div class="text-sm font-semibold text-gray-800">Paste UNS or General keys</div>
                                 <div class="text-[11px] text-gray-500">
                                     One key per line — accepts
-                                    <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">RingCentral.uns.&lt;hash&gt;.…</code>
+                                    <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">RingCentral.uns.&lt;hash&gt;.…</code>,
+                                    <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">common.uns.&lt;name&gt;__&lt;type&gt;__&lt;brandId&gt;</code>,
                                     or <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">RingCentral.&lt;project&gt;.&lt;32-char hash&gt;.&lt;key path&gt;</code>
                                 </div>
                             </div>
@@ -1214,7 +1217,7 @@
                     </div>
                     <div class="p-4">
                         <textarea v-model="unsKeysInput" rows="10" spellcheck="false"
-                            placeholder="RingCentral.jedi.4ac1be6d554451a0415e6f74fc494588.DispositionCodeRequired&#10;RingCentral.mobileWeb.0a6876c6242797584e9063a58bde9578.extensions.ANNOUNCEMENT_ONLY_EXT_ADD_PROMPT&#10;RingCentral.uns.01b5dd78db597a72c2aa49fa7b762d08.creditCardExpiration__email_html__1210__en_US"
+                            placeholder="common.uns.meetingRecordingAvailable__email_subject__2210&#10;common.uns.new.partials.footerLogoTosAndCopyright__email_html__1210&#10;RingCentral.uns.01b5dd78db597a72c2aa49fa7b762d08.creditCardExpiration__email_html__1210__en_US&#10;RingCentral.jedi.4ac1be6d554451a0415e6f74fc494588.DispositionCodeRequired"
                             class="w-full px-3 py-2 text-xs border border-gray-300 rounded-md font-mono leading-relaxed resize-y outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"></textarea>
                         <div class="mt-2 flex items-center justify-between flex-wrap gap-2">
                             <div class="text-[11px] text-gray-500">
@@ -1454,6 +1457,9 @@
                         <div class="text-3xl font-bold text-gray-800 tabular-nums">{{unsStats.total}}</div>
                         <div class="text-[10px] text-gray-400 mt-0.5">
                             <span>unique keys (hash-aware)</span>
+                            <span v-if="unsStats.tranzor && unsStats.legacy" class="text-gray-500">
+                                · {{unsStats.tranzor}} current · {{unsStats.legacy}} legacy
+                            </span>
                             <span v-if="unsParsed.duplicates" class="text-indigo-500 font-medium"> · {{unsParsed.duplicates}} dup{{unsParsed.duplicates === 1 ? '' : 's'}} removed</span>
                         </div>
                     </div>
@@ -2829,6 +2835,11 @@ createApp({
         }
 
         const UNS_SAMPLE_KEYS = [
+            'common.uns.meetingRecordingAvailable__email_subject__2210',
+            'common.uns.bridgeDelegateGranted__email_html__1210',
+            'common.uns.bridgeDelegateGranted__email_html__2110',
+            'common.uns.bridgeDelegateGranted__email_subject__1210',
+            'common.uns.new.partials.footerLogoTosAndCopyright__email_html__1210',
             'RingCentral.uns.1b165ed92251502e268e4a4708e6a6a0.vodafoneAddInventoryAdminInfo__email_html__7010__en_US',
             'RingCentral.uns.01b5dd78db597a72c2aa49fa7b762d08.creditCardExpiration__email_html__1210__en_US',
             'RingCentral.uns.0566572337250f1ce03947e943bb8749.orderShippingDetails__email_html__3460__en_US',
@@ -3295,11 +3306,10 @@ createApp({
         // ═══════════════════════════════════════
         //  UNS — Key parser
         // ═══════════════════════════════════════
-        // A UNS key looks like:
-        //   <namespace>.uns.<hash>.<TID>__<kind>__<BrandID>__<locale>
-        // namespace: usually "RingCentral"; hash: hex (variable length); TID:
-        // camelCase template identifier; kind: e.g. email_html / email_subject;
-        // BrandID: digits; locale: BCP-47-ish (e.g. en_US, fr-CA).
+        // Two UNS formats are recognized (see key-metadata-parser.js):
+        //   Legacy:  <namespace>.uns.<hash>.<TID>__<kind>__<BrandID>__<locale>
+        //   Tranzor: <namespace>.uns.<TID>__<kind>__<BrandID>
+        // TID may contain dotted path segments (e.g. new.partials.footerLogo…).
         function parseUnsKey(line) {
             return KeyMetadataParser.parseUnsKey(line);
         }
@@ -3502,22 +3512,24 @@ createApp({
             const brands = new Set();
             const locales = new Set();
             const unknownBrands = new Set();
-            let html = 0, subject = 0, other = 0;
+            let html = 0, subject = 0, other = 0, legacy = 0, tranzor = 0;
             for (const i of items) {
                 tids.add(i.tid);
                 brands.add(i.brandId);
-                locales.add(i.locale);
+                if (i.locale) locales.add(i.locale);
                 if (!unsBrandDict.value[i.brandId]) unknownBrands.add(i.brandId);
                 if (i.kind === 'email_html') html++;
                 else if (i.kind === 'email_subject') subject++;
                 else other++;
+                if (i.format === 'legacy') legacy++;
+                else tranzor++;
             }
             return {
                 total: items.length,
                 tids: tids.size,
                 brands: brands.size,
                 locales: locales.size,
-                html, subject, other,
+                html, subject, other, legacy, tranzor,
                 unknownBrands: unknownBrands.size,
                 unknownBrandList: [...unknownBrands].sort(),
             };
@@ -3531,16 +3543,20 @@ createApp({
             return true;
         }
 
-        // Search predicate. Searches across TID, brand ID, brand name, locale.
+        // Search predicate. Searches across TID, brand, locale, format, namespace.
         function unsSearchMatches(item) {
             const q = unsSearch.value.trim().toLowerCase();
             if (!q) return true;
             const haystack = [
                 item.tid,
+                item.tidLeaf,
                 item.brandId,
                 unsBrandName(item.brandId),
                 item.locale,
                 item.kind,
+                item.namespace,
+                item.format,
+                item.hash,
             ].join(' ').toLowerCase();
             return haystack.includes(q);
         }
@@ -3680,11 +3696,19 @@ createApp({
         const unsHasRepoData = computed(() => !!unsRepoData.value);
 
         // 'template' | 'partial' | 'both' | 'unknown' (synced) · 'unsynced' (no data)
+        // Tranzor TIDs may be dotted paths (`new.partials.footerLogo…`); the
+        // repo index stores folder basenames, so the leaf segment is also tried.
         function classifyTid(tid) {
             const sets = unsRepoSets.value;
             if (!sets) return 'unsynced';
-            const t = sets.templates.has(tid);
-            const p = sets.partials.has(tid);
+            const raw = String(tid || '');
+            const leaf = raw.includes('.') ? raw.split('.').pop() : raw;
+            const names = leaf && leaf !== raw ? [raw, leaf] : [raw];
+            let t = false, p = false;
+            for (const name of names) {
+                if (sets.templates.has(name)) t = true;
+                if (sets.partials.has(name)) p = true;
+            }
             if (t && p) return 'both';
             if (t) return 'template';
             if (p) return 'partial';
@@ -3896,6 +3920,10 @@ createApp({
                     emailHtml: unsStats.value.html,
                     emailSubject: unsStats.value.subject,
                     other: unsStats.value.other,
+                    format: {
+                        tranzor: unsStats.value.tranzor,
+                        legacy: unsStats.value.legacy,
+                    },
                     unmappedBrands: unsStats.value.unknownBrandList,
                     classification: {
                         template: cs.template,
@@ -3918,9 +3946,12 @@ createApp({
                 templates: byTemplate,
                 brandDictionary: { ...unsBrandDict.value },
                 raw: items.map(i => ({
+                    format: i.format,
                     namespace: i.namespace,
+                    prefix: i.prefix,
                     hash: i.hash,
                     tid: i.tid,
+                    tidLeaf: i.tidLeaf,
                     classification: classifyTid(i.tid),
                     kind: i.kind,
                     brandId: i.brandId,
