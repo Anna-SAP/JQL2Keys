@@ -982,7 +982,8 @@
                         <span class="text-indigo-700 font-semibold">hash</span>,
                         <span class="text-indigo-700 font-semibold">feature / key path</span>, and explicit brand metadata when present.
                         Both legacy <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">RingCentral.uns.&lt;hash&gt;.…</code>
-                        and current <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">common.uns.…</code> formats are recognized.
+                        and current <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">common.uns.…</code> formats are recognized,
+                        including Tranzor MR Pipeline TUs with a <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">:::seg:::&lt;uid&gt;</code> suffix.
                     </p>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
@@ -1202,6 +1203,7 @@
                                     One key per line — accepts
                                     <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">RingCentral.uns.&lt;hash&gt;.…</code>,
                                     <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">common.uns.&lt;name&gt;__&lt;type&gt;__&lt;brandId&gt;</code>,
+                                    optional <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">:::seg:::&lt;uid&gt;</code>,
                                     or <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">RingCentral.&lt;project&gt;.&lt;32-char hash&gt;.&lt;key path&gt;</code>
                                 </div>
                             </div>
@@ -1217,7 +1219,7 @@
                     </div>
                     <div class="p-4">
                         <textarea v-model="unsKeysInput" rows="10" spellcheck="false"
-                            placeholder="common.uns.meetingRecordingAvailable__email_subject__2210&#10;common.uns.new.partials.footerLogoTosAndCopyright__email_html__1210&#10;RingCentral.uns.01b5dd78db597a72c2aa49fa7b762d08.creditCardExpiration__email_html__1210__en_US&#10;RingCentral.jedi.4ac1be6d554451a0415e6f74fc494588.DispositionCodeRequired"
+                            placeholder="common.uns.meetingRecordingAvailable__email_subject__2210&#10;common.uns.airMinuteExpiration__email_html__1210:::seg:::11&#10;common.uns.new.partials.footerLogoTosAndCopyright__email_html__1210&#10;RingCentral.uns.01b5dd78db597a72c2aa49fa7b762d08.creditCardExpiration__email_html__1210__en_US&#10;RingCentral.jedi.4ac1be6d554451a0415e6f74fc494588.DispositionCodeRequired"
                             class="w-full px-3 py-2 text-xs border border-gray-300 rounded-md font-mono leading-relaxed resize-y outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"></textarea>
                         <div class="mt-2 flex items-center justify-between flex-wrap gap-2">
                             <div class="text-[11px] text-gray-500">
@@ -1457,6 +1459,9 @@
                         <div class="text-3xl font-bold text-gray-800 tabular-nums">{{unsStats.total}}</div>
                         <div class="text-[10px] text-gray-400 mt-0.5">
                             <span>unique keys (hash-aware)</span>
+                            <span v-if="unsStats.segmented" class="text-violet-600 font-medium">
+                                · {{unsStats.segmented}} TU{{unsStats.segmented === 1 ? '' : 's'}} (:::seg:::)
+                            </span>
                             <span v-if="unsStats.tranzor && unsStats.legacy" class="text-gray-500">
                                 · {{unsStats.tranzor}} current · {{unsStats.legacy}} legacy
                             </span>
@@ -1494,7 +1499,7 @@
                             <svg class="w-3.5 h-3.5 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                         </div>
                         <div class="text-3xl font-bold text-indigo-600 tabular-nums">{{unsStats.html}}</div>
-                        <div class="text-[10px] text-gray-400 mt-0.5">body content</div>
+                        <div class="text-[10px] text-gray-400 mt-0.5">{{ unsStats.segmented ? 'body TUs / keys' : 'body content' }}</div>
                     </div>
                     <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
                         <div class="flex items-center justify-between mb-1">
@@ -1662,9 +1667,9 @@
                                         <td v-for="b in unsMatrix.brands" :key="b" class="px-2 py-1.5 text-center align-middle">
                                             <div class="flex items-center justify-center gap-0.5">
                                                 <span v-if="unsMatrix.data[tid] && unsMatrix.data[tid][b] && unsMatrix.data[tid][b].html"
-                                                    class="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[9px] font-mono font-bold">HTML</span>
+                                                    class="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[9px] font-mono font-bold">HTML<span v-if="unsMatrix.data[tid][b].htmlSegs" class="ml-0.5 font-semibold">{{unsMatrix.data[tid][b].htmlSegs}}</span></span>
                                                 <span v-if="unsMatrix.data[tid] && unsMatrix.data[tid][b] && unsMatrix.data[tid][b].subject"
-                                                    class="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-mono font-bold">SUBJ</span>
+                                                    class="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-mono font-bold">SUBJ<span v-if="unsMatrix.data[tid][b].subjectSegs" class="ml-0.5 font-semibold">{{unsMatrix.data[tid][b].subjectSegs}}</span></span>
                                                 <span v-if="!unsMatrix.data[tid] || !unsMatrix.data[tid][b]" class="text-gray-300">·</span>
                                             </div>
                                         </td>
@@ -1713,6 +1718,7 @@
                                 <span class="text-[10px] text-gray-400">{{unsBrandName(b.brandId) || '?'}}</span>
                                 <span v-if="b.html" class="px-1 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[9px] font-mono font-bold">HTML</span>
                                 <span v-if="b.subject" class="px-1 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-mono font-bold">SUBJ</span>
+                                <span v-if="b.segments" class="px-1 py-0.5 bg-violet-100 text-violet-700 rounded text-[9px] font-mono font-bold" :title="b.segments + ' MR Pipeline translation unit' + (b.segments === 1 ? '' : 's')">SEG {{b.segments}}</span>
                             </div>
                         </div>
                     </div>
@@ -1747,6 +1753,7 @@
                                     :title="storageChipTitle(folder, t.tid)">{{storageMeta(folder).short}}</span>
                                 <span v-if="t.html" class="px-1 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[9px] font-mono font-bold">HTML</span>
                                 <span v-if="t.subject" class="px-1 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-mono font-bold">SUBJ</span>
+                                <span v-if="t.segments" class="px-1 py-0.5 bg-violet-100 text-violet-700 rounded text-[9px] font-mono font-bold" :title="t.segments + ' MR Pipeline translation unit' + (t.segments === 1 ? '' : 's')">SEG {{t.segments}}</span>
                             </div>
                         </div>
                     </div>
@@ -2859,6 +2866,8 @@ createApp({
             'common.uns.bridgeDelegateGranted__email_html__1210',
             'common.uns.bridgeDelegateGranted__email_html__2110',
             'common.uns.bridgeDelegateGranted__email_subject__1210',
+            'common.uns.airMinuteExpiration__email_html__1210:::seg:::11',
+            'common.uns.airMinuteExpiration__email_html__1210:::seg:::12',
             'common.uns.new.partials.footerLogoTosAndCopyright__email_html__1210',
             'RingCentral.uns.1b165ed92251502e268e4a4708e6a6a0.vodafoneAddInventoryAdminInfo__email_html__7010__en_US',
             'RingCentral.uns.01b5dd78db597a72c2aa49fa7b762d08.creditCardExpiration__email_html__1210__en_US',
@@ -3329,6 +3338,7 @@ createApp({
         // Two UNS formats are recognized (see key-metadata-parser.js):
         //   Legacy:  <namespace>.uns.<hash>.<TID>__<kind>__<BrandID>__<locale>
         //   Tranzor: <namespace>.uns.<TID>__<kind>__<BrandID>
+        // Either may carry an MR Pipeline TU suffix: :::seg:::<uid> (or ::seg:::<uid>).
         // TID may contain dotted path segments (e.g. new.partials.footerLogo…).
         function parseUnsKey(line) {
             return KeyMetadataParser.parseUnsKey(line);
@@ -3532,10 +3542,12 @@ createApp({
             const brands = new Set();
             const locales = new Set();
             const unknownBrands = new Set();
-            let html = 0, subject = 0, other = 0, legacy = 0, tranzor = 0;
+            const baseKeys = new Set();
+            let html = 0, subject = 0, other = 0, legacy = 0, tranzor = 0, segmented = 0;
             for (const i of items) {
                 tids.add(i.tid);
                 brands.add(i.brandId);
+                baseKeys.add(i.baseKey || i.raw);
                 if (i.locale) locales.add(i.locale);
                 if (!unsBrandDict.value[i.brandId]) unknownBrands.add(i.brandId);
                 if (i.kind === 'email_html') html++;
@@ -3543,13 +3555,15 @@ createApp({
                 else other++;
                 if (i.format === 'legacy') legacy++;
                 else tranzor++;
+                if (i.segmentId) segmented++;
             }
             return {
                 total: items.length,
                 tids: tids.size,
                 brands: brands.size,
                 locales: locales.size,
-                html, subject, other, legacy, tranzor,
+                html, subject, other, legacy, tranzor, segmented,
+                uniqueBaseKeys: baseKeys.size,
                 unknownBrands: unknownBrands.size,
                 unknownBrandList: [...unknownBrands].sort(),
             };
@@ -3581,6 +3595,9 @@ createApp({
                 item.namespace,
                 item.format,
                 item.hash,
+                item.baseKey,
+                item.segmentId,
+                item.segmentId ? 'seg tu segment' : '',
             ].join(' ').toLowerCase();
             return haystack.includes(q);
         }
@@ -3596,17 +3613,18 @@ createApp({
             for (const item of unsFilteredItems.value) {
                 if (!byTid.has(item.tid)) byTid.set(item.tid, new Map());
                 const brandMap = byTid.get(item.tid);
-                if (!brandMap.has(item.brandId)) brandMap.set(item.brandId, { html: false, subject: false });
+                if (!brandMap.has(item.brandId)) brandMap.set(item.brandId, { html: false, subject: false, segments: 0 });
                 const slot = brandMap.get(item.brandId);
                 if (item.kind === 'email_html') slot.html = true;
                 else if (item.kind === 'email_subject') slot.subject = true;
+                if (item.segmentId) slot.segments += 1;
             }
             const out = [];
             for (const [tid, brandMap] of byTid.entries()) {
                 const brands = [];
                 let htmlCount = 0, subjectCount = 0;
                 for (const [brandId, flags] of brandMap.entries()) {
-                    brands.push({ brandId, html: flags.html, subject: flags.subject });
+                    brands.push({ brandId, html: flags.html, subject: flags.subject, segments: flags.segments });
                     if (flags.html) htmlCount++;
                     if (flags.subject) subjectCount++;
                 }
@@ -3627,17 +3645,18 @@ createApp({
             for (const item of unsFilteredItems.value) {
                 if (!byBrand.has(item.brandId)) byBrand.set(item.brandId, new Map());
                 const tidMap = byBrand.get(item.brandId);
-                if (!tidMap.has(item.tid)) tidMap.set(item.tid, { html: false, subject: false });
+                if (!tidMap.has(item.tid)) tidMap.set(item.tid, { html: false, subject: false, segments: 0 });
                 const slot = tidMap.get(item.tid);
                 if (item.kind === 'email_html') slot.html = true;
                 else if (item.kind === 'email_subject') slot.subject = true;
+                if (item.segmentId) slot.segments += 1;
             }
             const out = [];
             for (const [brandId, tidMap] of byBrand.entries()) {
                 const tids = [];
                 let htmlCount = 0, subjectCount = 0;
                 for (const [tid, flags] of tidMap.entries()) {
-                    tids.push({ tid, html: flags.html, subject: flags.subject });
+                    tids.push({ tid, html: flags.html, subject: flags.subject, segments: flags.segments });
                     if (flags.html) htmlCount++;
                     if (flags.subject) subjectCount++;
                 }
@@ -3668,9 +3687,14 @@ createApp({
             // which chips show without making rows/cols vanish.
             for (const item of unsFilteredItems.value) {
                 if (!data[item.tid]) data[item.tid] = {};
-                if (!data[item.tid][item.brandId]) data[item.tid][item.brandId] = { html: false, subject: false };
-                if (item.kind === 'email_html') data[item.tid][item.brandId].html = true;
-                else if (item.kind === 'email_subject') data[item.tid][item.brandId].subject = true;
+                if (!data[item.tid][item.brandId]) data[item.tid][item.brandId] = { html: false, subject: false, htmlSegs: 0, subjectSegs: 0 };
+                if (item.kind === 'email_html') {
+                    data[item.tid][item.brandId].html = true;
+                    if (item.segmentId) data[item.tid][item.brandId].htmlSegs += 1;
+                } else if (item.kind === 'email_subject') {
+                    data[item.tid][item.brandId].subject = true;
+                    if (item.segmentId) data[item.tid][item.brandId].subjectSegs += 1;
+                }
             }
             return {
                 tids: [...tids].sort(),
@@ -3856,7 +3880,9 @@ createApp({
                     const cells = brands.map(b => {
                         const cell = unsMatrix.value.data[tid] && unsMatrix.value.data[tid][b];
                         if (!cell || (!cell.html && !cell.subject)) return '—';
-                        return [cell.html ? 'HTML' : '', cell.subject ? 'SUBJ' : ''].filter(Boolean).join(' + ');
+                        const htmlLabel = cell.html ? (cell.htmlSegs ? 'HTML ' + cell.htmlSegs : 'HTML') : '';
+                        const subjLabel = cell.subject ? (cell.subjectSegs ? 'SUBJ ' + cell.subjectSegs : 'SUBJ') : '';
+                        return [htmlLabel, subjLabel].filter(Boolean).join(' + ');
                     });
                     const loc = unsTidLocations(tid).map(f => storageMeta(f).short).join('+');
                     const tidLabel = loc ? tid + ' [' + loc + ']' : tid;
@@ -3994,6 +4020,8 @@ createApp({
                     emailHtml: unsStats.value.html,
                     emailSubject: unsStats.value.subject,
                     other: unsStats.value.other,
+                    segmentedKeys: unsStats.value.segmented,
+                    uniqueBaseKeys: unsStats.value.uniqueBaseKeys,
                     format: {
                         tranzor: unsStats.value.tranzor,
                         legacy: unsStats.value.legacy,
@@ -4035,6 +4063,9 @@ createApp({
                     brandId: i.brandId,
                     brandName: unsBrandName(i.brandId) || null,
                     locale: i.locale,
+                    baseKey: i.baseKey || i.raw,
+                    segmentId: i.segmentId || null,
+                    segmentMarker: i.segmentMarker || null,
                     key: i.raw,
                 })),
             };

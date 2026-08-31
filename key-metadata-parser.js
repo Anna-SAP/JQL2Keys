@@ -13,6 +13,8 @@
     const UNS_HEAD_RE = /^([A-Za-z][A-Za-z0-9_]*)\.uns\.(.+)$/;
     const GENERAL_KEY_RE = /^([A-Za-z][A-Za-z0-9_]*)\.([A-Za-z][A-Za-z0-9_-]*)\.([a-fA-F0-9]{32})\.([^\s.]+(?:\.[^\s.]+)*)$/;
     const SPECIAL_DELIMITER = '#@#';
+    // Tranzor MR Pipeline TUs: <baseKey>:::seg:::<uid> (canonical) or ::seg:::<uid>.
+    const UNS_SEG_SUFFIX_RE = /(:::seg:::|::seg:::)([A-Za-z0-9][A-Za-z0-9._-]*)$/;
 
     function cleanKeyLine(line) {
         let cleaned = String(line || '').trim();
@@ -62,6 +64,19 @@
         };
     }
 
+    // Tranzor MR Pipeline TUs append :::seg:::<uid> (canonical) or ::seg:::<uid>
+    // to an otherwise valid UNS key. Peel it so brand / locale still validate.
+    function splitUnsSegmentSuffix(key) {
+        const value = String(key || '');
+        const match = value.match(UNS_SEG_SUFFIX_RE);
+        if (!match) return { baseKey: value, segmentId: null, segmentMarker: null };
+        return {
+            baseKey: value.slice(0, match.index),
+            segmentId: match[2],
+            segmentMarker: match[1],
+        };
+    }
+
     // Steal a leading hex path-hash from `<hash>.<name>`. Legacy Opus keys
     // always inject one; Tranzor names may contain dotted path segments
     // (`new.partials.footerLogo…`) that must not be mistaken for a hash.
@@ -76,7 +91,12 @@
         const cleaned = cleanKeyLine(line);
         if (!cleaned) return null;
 
-        const head = cleaned.match(UNS_HEAD_RE);
+        // MR Pipeline TUs append :::seg:::<uid> to an otherwise valid UNS key.
+        // Peel that suffix first so brandId / locale still match UNS_BRAND_ID_RE.
+        const { baseKey, segmentId, segmentMarker } = splitUnsSegmentSuffix(cleaned);
+        if (!baseKey) return null;
+
+        const head = baseKey.match(UNS_HEAD_RE);
         if (!head) return null;
         const [, namespace, rest] = head;
         const parts = rest.split('__');
@@ -85,6 +105,8 @@
         // Tranzor (current):
         //   <ns>.uns.<name>__<type>__<brandId>
         //   <name> may itself contain dotted segments.
+        // Tranzor MR Pipeline TUs (same as Tranzor / legacy, plus suffix):
+        //   <baseKey>:::seg:::<uid>
         if (parts.length !== 3 && parts.length !== 4) return null;
 
         const hasLocale = parts.length === 4;
@@ -113,6 +135,9 @@
             keyType: 'uns',
             format: hash || hasLocale ? 'legacy' : 'tranzor',
             raw: cleaned,
+            baseKey,
+            segmentId,
+            segmentMarker,
             namespace,
             prefix: namespace + '.uns',
             hash,
@@ -411,8 +436,10 @@
         SPECIAL_DELIMITER,
         UNS_BRAND_ID_RE,
         UNS_HEAD_RE,
+        UNS_SEG_SUFFIX_RE,
         cleanKeyLine,
         splitUnsLocation,
+        splitUnsSegmentSuffix,
         parseUnsKey,
         parseGeneralKey,
         parseKeyBatch,

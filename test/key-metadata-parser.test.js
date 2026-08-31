@@ -98,6 +98,9 @@ test('parseUnsKey extracts Tranzor keys without hash or locale', () => {
     assert.equal(item.kind, 'email_subject');
     assert.equal(item.brandId, '2210');
     assert.equal(item.locale, null);
+    assert.equal(item.segmentId, null);
+    assert.equal(item.segmentMarker, null);
+    assert.equal(item.baseKey, item.raw);
 });
 
 test('parseUnsKey treats new. as newTemplateStorage, not part of the TID', () => {
@@ -185,6 +188,53 @@ test('parseUnsKey rejects malformed UNS lines', () => {
     assert.equal(parseUnsKey('common.uns.meetingRecordingAvailable'), null);
     assert.equal(parseUnsKey('RingCentral.jedi.4ac1be6d554451a0415e6f74fc494588.DispositionCodeRequired'), null);
     assert.equal(parseUnsKey('not-a-key'), null);
+    assert.equal(parseUnsKey('common.uns.airMinuteExpiration__email_html__1210:::seg:::'), null);
+    assert.equal(parseUnsKey('common.uns.airMinuteExpiration__email_html__:::seg:::11'), null);
+});
+
+test('parseUnsKey peels Tranzor MR Pipeline :::seg::: translation units', () => {
+    const item = parseUnsKey('common.uns.airMinuteExpiration__email_html__1210:::seg:::11');
+    assert.ok(item);
+    assert.equal(item.format, 'tranzor');
+    assert.equal(item.tid, 'airMinuteExpiration');
+    assert.equal(item.kind, 'email_html');
+    assert.equal(item.brandId, '1210');
+    assert.equal(item.locale, null);
+    assert.equal(item.segmentId, '11');
+    assert.equal(item.segmentMarker, ':::seg:::');
+    assert.equal(item.baseKey, 'common.uns.airMinuteExpiration__email_html__1210');
+    assert.equal(item.raw, 'common.uns.airMinuteExpiration__email_html__1210:::seg:::11');
+});
+
+test('parseUnsKey accepts the two-colon ::seg::: export variant without rewriting it', () => {
+    const item = parseUnsKey('common.uns.bridgeDelegateGranted__email_html__1210::seg:::8');
+    assert.ok(item);
+    assert.equal(item.brandId, '1210');
+    assert.equal(item.segmentId, '8');
+    assert.equal(item.segmentMarker, '::seg:::');
+    assert.equal(item.raw, 'common.uns.bridgeDelegateGranted__email_html__1210::seg:::8');
+    assert.equal(item.baseKey, 'common.uns.bridgeDelegateGranted__email_html__1210');
+});
+
+test('parseUnsKey peels :::seg::: from a legacy key after the locale', () => {
+    const item = parseUnsKey(
+        'RingCentral.uns.37568911e605fa5474970da9ee5b4b7b.airLeadDigest__email_html__1210__en_US:::seg:::3'
+    );
+    assert.ok(item);
+    assert.equal(item.format, 'legacy');
+    assert.equal(item.tid, 'airLeadDigest');
+    assert.equal(item.brandId, '1210');
+    assert.equal(item.locale, 'en_US');
+    assert.equal(item.segmentId, '3');
+    assert.equal(item.hash, '37568911e605fa5474970da9ee5b4b7b');
+});
+
+test('parseUnsKey peels :::seg::: then a trailing frequency column', () => {
+    const item = parseUnsKey('common.uns.airMinuteExpiration__email_html__1210:::seg:::11  7');
+    assert.ok(item);
+    assert.equal(item.segmentId, '11');
+    assert.equal(item.brandId, '1210');
+    assert.equal(item.raw, 'common.uns.airMinuteExpiration__email_html__1210:::seg:::11');
 });
 
 test('General parser rejects UNS keys, malformed hashes, and empty path segments', () => {
@@ -243,6 +293,49 @@ test('batch parser recognizes the screenshot-style common.uns paste', () => {
     assert.deepEqual([...new Set(result.uns.map(item => item.brandId))].sort(), [
         '1210', '2110', '2210', '6010', '9010',
     ]);
+});
+
+test('batch parser recognizes MR Pipeline :::seg::: TUs (screenshot airMinuteExpiration paste)', () => {
+    // Visible UIDs from the Key Metadata Extractor screenshot, plus the rest of
+    // a 23-line paste of the same template / brand / kind.
+    const visibleUids = [11, 12, 14, 16, 17, 2, 4, 5, 7, 8];
+    const remainingUids = [1, 3, 6, 9, 10, 13, 15, 18, 19, 20, 21, 22, 23];
+    const uids = [...visibleUids, ...remainingUids];
+    assert.equal(uids.length, 23);
+    const paste = uids
+        .map(uid => `common.uns.airMinuteExpiration__email_html__1210:::seg:::${uid}`)
+        .join('\n');
+    const result = parseKeyBatch(paste);
+    assert.equal(result.parsed.length, 23);
+    assert.equal(result.uns.length, 23);
+    assert.equal(result.unparsed.length, 0);
+    assert.equal(result.duplicates, 0);
+    assert.ok(result.uns.every(item => item.format === 'tranzor'));
+    assert.ok(result.uns.every(item => item.tid === 'airMinuteExpiration'));
+    assert.ok(result.uns.every(item => item.brandId === '1210'));
+    assert.ok(result.uns.every(item => item.kind === 'email_html'));
+    assert.ok(result.uns.every(item => item.segmentMarker === ':::seg:::'));
+    assert.deepEqual(
+        result.uns.map(item => item.segmentId).sort((a, b) => Number(a) - Number(b)),
+        uids.map(String).sort((a, b) => Number(a) - Number(b))
+    );
+    assert.equal(
+        new Set(result.uns.map(item => item.baseKey)).size,
+        1
+    );
+});
+
+test('batch parser keeps distinct :::seg::: TUs and de-dupes the same TU', () => {
+    const result = parseKeyBatch([
+        'common.uns.airMinuteExpiration__email_html__1210:::seg:::11',
+        'common.uns.airMinuteExpiration__email_html__1210:::seg:::12',
+        'common.uns.airMinuteExpiration__email_html__1210:::seg:::11',
+        'common.uns.airMinuteExpiration__email_html__1210',
+    ]);
+    assert.equal(result.parsed.length, 3);
+    assert.equal(result.duplicates, 1);
+    assert.equal(result.unparsed.length, 0);
+    assert.deepEqual(result.uns.map(item => item.segmentId), ['11', '12', null]);
 });
 
 test('General summary counts projects and useful metadata dimensions', () => {
