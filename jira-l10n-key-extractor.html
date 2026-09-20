@@ -6,6 +6,7 @@
     <title>UNS Assistant — Localization toolkit</title>
     <link rel="stylesheet" href="vendor/tailwind.min.css">
     <script src="key-metadata-parser.js"></script>
+    <script src="bug-mr-summary.js"></script>
     <script src="vendor/vue.global.prod.js"></script>
     <script src="vendor/jszip.min.js"></script>
     <style>
@@ -31,6 +32,10 @@
     /* Bug Fixing Helper metadata matrix */
     .bug-matrix thead th { border-bottom: 1px solid #e5e7eb; }
     .bug-matrix tbody tr:hover { background: #f0fdfa; }
+    .bug-summary-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    @media (min-width: 1280px) {
+        .bug-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen text-gray-800">
@@ -2371,7 +2376,7 @@
                         <div class="bg-white border border-gray-200 rounded-lg p-3">
                             <div class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Merge requests</div>
                             <div class="text-2xl font-bold text-gray-800 tabular-nums">{{bugStats.mrs}}</div>
-                            <div class="text-[10px] text-gray-400">distinct MR iids</div>
+                            <div class="text-[10px] text-gray-400">distinct project + MR pairs</div>
                         </div>
                         <div class="bg-white border border-gray-200 rounded-lg p-3">
                             <div class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Locales</div>
@@ -2409,8 +2414,9 @@
                             <template v-if="bugFilter.trim()">No units match “{{bugFilter}}”.</template>
                             <template v-else>None of the pasted units carry <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">_source</code> / <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">_all_sources</code> provenance — try the Translations zone.</template>
                         </div>
-                        <!-- Unique MR links from the source rows in the current (filtered) metadata list. -->
-                        <div v-if="bugMetaGroups.length" class="bg-white border border-emerald-200 rounded-lg shadow-sm px-4 py-3">
+                        <!-- MR and Jira summaries follow the current filtered metadata list. -->
+                        <div v-if="bugMetaGroups.length" class="bug-summary-grid">
+                        <section aria-label="MR Summary" class="bg-white border border-emerald-200 rounded-lg shadow-sm px-4 py-3">
                             <div class="flex items-center justify-between gap-2 flex-wrap">
                                 <div class="flex items-center gap-2">
                                     <span class="text-xs font-semibold text-gray-700">MR Summary</span>
@@ -2421,7 +2427,7 @@
                                 </span>
                             </div>
                             <div v-if="bugUniqueMrs.length" class="flex flex-wrap gap-2 mt-2.5">
-                                <template v-for="mr in bugUniqueMrs" :key="mr.iid">
+                                <template v-for="mr in bugUniqueMrs" :key="mr.key">
                                     <a v-if="mr.url" :href="mr.url" target="_blank" rel="noopener noreferrer"
                                         class="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 font-mono text-[11px] font-medium text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:underline transition"
                                         :title="'Open ' + mr.url">
@@ -2434,6 +2440,43 @@
                                 </template>
                             </div>
                             <div v-else class="mt-2 text-[11px] text-gray-400">No merge requests in the current list.</div>
+                        </section>
+                        <section aria-label="JIRA Summary" :aria-busy="bugJiraStatus.loading > 0" class="bg-white border border-indigo-200 rounded-lg shadow-sm px-4 py-3">
+                            <div class="flex items-center justify-between gap-2 flex-wrap">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <span class="text-xs font-semibold text-gray-700">JIRA Summary</span>
+                                    <span class="text-[10px] text-gray-400">deduplicated from MR titles</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-[10px] font-medium text-indigo-700 tabular-nums">{{bugJiraTickets.length}} unique ticket{{bugJiraTickets.length === 1 ? '' : 's'}}</span>
+                                    <button @click="syncBugMrTitles(true)" type="button" :disabled="!bugJiraStatus.linked || bugJiraStatus.loading > 0"
+                                        class="text-[11px] text-indigo-700 hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+                                        title="Fetch the current MR titles again">{{bugJiraStatus.failed.length ? 'Retry' : 'Refresh'}}</button>
+                                </div>
+                            </div>
+                            <div v-if="bugJiraTickets.length" class="flex flex-wrap gap-2 mt-2.5">
+                                <a v-for="ticket in bugJiraTickets" :key="ticket.id" :href="ticket.url" target="_blank" rel="noopener noreferrer"
+                                    :title="ticket.sources.join('\n')"
+                                    class="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 font-mono text-[11px] font-medium text-indigo-700 hover:bg-indigo-100 hover:underline transition">
+                                    {{ticket.id}}
+                                    <svg class="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                </a>
+                            </div>
+                            <div class="mt-2 text-[11px] text-gray-400" role="status" aria-live="polite">
+                                <span v-if="bugJiraStatus.loading">Loading MR titles… {{bugJiraStatus.ready}} / {{bugJiraStatus.linked}} loaded.</span>
+                                <span v-else-if="!bugUniqueMrs.length">No merge requests in the current list.</span>
+                                <span v-else-if="bugJiraStatus.failed.length || bugJiraStatus.skipped">{{bugJiraStatus.ready}} / {{bugUniqueMrs.length}} MR titles loaded. The ticket list may be incomplete.</span>
+                                <span v-else-if="!bugJiraTickets.length">No JIRA ticket IDs found in these MR titles.</span>
+                                <span v-else>{{bugJiraStatus.ready}} MR title{{bugJiraStatus.ready === 1 ? '' : 's'}} checked.</span>
+                            </div>
+                            <details v-if="bugJiraStatus.failed.length" class="mt-2 text-[11px] text-amber-700">
+                                <summary class="cursor-pointer">Could not load {{bugJiraStatus.failed.length}} MR title{{bugJiraStatus.failed.length === 1 ? '' : 's'}}. Check GitLab access / VPN and retry.</summary>
+                                <ul class="mt-1 space-y-1">
+                                    <li v-for="failure in bugJiraStatus.failed" :key="failure.key" class="break-all">{{failure.project}} !{{failure.iid}} — {{failure.error}}</li>
+                                </ul>
+                            </details>
+                            <div v-if="bugJiraStatus.skipped" class="mt-2 text-[11px] text-gray-500">{{bugJiraStatus.skipped}} MR{{bugJiraStatus.skipped === 1 ? '' : 's'}} without a supported GitLab link could not be checked.</div>
+                        </section>
                         </div>
                         <div v-for="grp in bugMetaGroups" :key="grp.key" class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
                             <!-- Key header -->
@@ -3256,7 +3299,7 @@ createApp({
         // ═══════════════════════════════════════
         //  UNS — App-level computeds
         // ═══════════════════════════════════════
-        const appVersion = '1.9.2';
+        const appVersion = '1.9.3';
         const appHostLabel = computed(() => {
             if (typeof location === 'undefined' || !location.host) return 'standalone';
             return location.host;
@@ -5589,7 +5632,8 @@ createApp({
         // are named like "MR#40734 web/web", so any slash-bearing token is a
         // candidate. Unknown projects yield '' (no link).
         function bugMrUrl(rec) {
-            if (rec.merge_request_iid == null) return '';
+            const iid = String(rec.merge_request_iid == null ? '' : rec.merge_request_iid).trim();
+            if (!/^[1-9]\d*$/.test(iid)) return '';
             const candidates = [];
             if (rec.project_id) candidates.push(String(rec.project_id));
             for (const tok of String(rec.task_name || '').split(/\s+/)) {
@@ -5598,7 +5642,7 @@ createApp({
             for (const c of candidates) {
                 const p = c.replace(/^\/+|\/+$/g, '').toLowerCase();
                 if (BUG_MR_PROJECTS.has(p)) {
-                    return BUG_GITLAB_HOST + '/' + p + '/-/merge_requests/' + rec.merge_request_iid;
+                    return BUG_GITLAB_HOST + '/' + p + '/-/merge_requests/' + iid;
                 }
             }
             return '';
@@ -5857,7 +5901,7 @@ createApp({
 
         const bugStats = computed(() => {
             const us = bugUnits.value;
-            const keys = new Set(), tasks = new Set(), mrs = new Set(), locales = new Set();
+            const keys = new Set(), tasks = new Set(), locales = new Set();
             let sourceRecords = 0, withoutMeta = 0;
             for (const u of us) {
                 if (u.key) keys.add(u.key);
@@ -5865,12 +5909,11 @@ createApp({
                 if (!u.rows.length) withoutMeta++;
                 for (const r of u.rows) {
                     if (r.task_id) tasks.add(r.task_id);
-                    if (r.merge_request_iid != null) mrs.add(String(r.merge_request_iid));
                 }
                 for (const l of Object.keys(u.topTrans)) locales.add(l);
                 for (const ps of u.perSource) for (const l of Object.keys(ps.translations)) locales.add(l);
             }
-            return { units: us.length, keys: keys.size, sourceRecords, tasks: tasks.size, mrs: mrs.size, locales: locales.size, withoutMeta };
+            return { units: us.length, keys: keys.size, sourceRecords, tasks: tasks.size, mrs: BugMrSummary.collectMrs(us).length, locales: locales.size, withoutMeta };
         });
 
         const bugHasUnsKeys = computed(() => bugUnits.value.some(u => bugUnsHash(u.key)));
@@ -5914,24 +5957,56 @@ createApp({
                 }));
         });
 
-        // Keep the summary aligned with the rows currently shown in the metadata
-        // list. MR iid is the identity; when duplicate rows disagree on link
-        // availability, retain the first real URL instead of a linkless entry.
-        const bugUniqueMrs = computed(() => {
-            const byIid = new Map();
-            for (const grp of bugMetaGroups.value) {
-                for (const row of grp.rows) {
-                    if (row.merge_request_iid == null) continue;
-                    const iid = String(row.merge_request_iid).trim();
-                    if (!iid) continue;
-                    const url = row.mrUrl || '';
-                    const existing = byIid.get(iid);
-                    if (!existing) byIid.set(iid, { iid, url });
-                    else if (!existing.url && url) existing.url = url;
+        const bugUniqueMrs = computed(() => BugMrSummary.collectMrs(bugMetaGroups.value));
+        const bugMrDetails = ref({});
+        const loadBugMrTitle = BugMrSummary.createTitleLoader((url, options) => fetch(url, options));
+        let bugMrLookupVersion = 0;
+        let bugMrProxyBase = '';
+
+        async function syncBugMrTitles(force = false) {
+            const version = ++bugMrLookupVersion;
+            const proxyBase = (config.proxyUrl || location.origin || '').replace(/\/+$/, '');
+            const previous = !force && proxyBase === bugMrProxyBase ? bugMrDetails.value : {};
+            bugMrProxyBase = proxyBase;
+            const mrs = bugUniqueMrs.value.filter(mr => mr.url);
+            bugMrDetails.value = Object.fromEntries(mrs.map(mr => [mr.key, previous[mr.key] || { status: 'loading' }]));
+            await Promise.all(mrs.map(async mr => {
+                if (bugMrDetails.value[mr.key].status !== 'loading') return;
+                let detail;
+                try {
+                    const title = await loadBugMrTitle(mr, proxyBase, force);
+                    detail = { status: 'ready', title };
+                } catch (error) {
+                    detail = { status: 'error', error: error.message || String(error) };
                 }
+                // A slower response for an old dump/filter must never replace
+                // the summaries for the current list.
+                if (version === bugMrLookupVersion) bugMrDetails.value = { ...bugMrDetails.value, [mr.key]: detail };
+            }));
+        }
+
+        const bugJiraTickets = computed(() => BugMrSummary.collectJiraTickets(bugUniqueMrs.value, bugMrDetails.value, config.domain));
+        const bugJiraStatus = computed(() => {
+            const status = { linked: 0, ready: 0, loading: 0, skipped: 0, failed: [] };
+            for (const mr of bugUniqueMrs.value) {
+                if (!mr.url) { status.skipped++; continue; }
+                status.linked++;
+                const detail = bugMrDetails.value[mr.key];
+                if (!detail || detail.status === 'loading') status.loading++;
+                else if (detail.status === 'ready') status.ready++;
+                else status.failed.push({ ...mr, error: detail.error });
             }
-            return [...byIid.values()];
+            return status;
         });
+
+        watch([
+            () => JSON.stringify(bugUniqueMrs.value.map(mr => [mr.key, mr.url])),
+            () => config.proxyUrl,
+            () => activeTool.value === 'bug-helper',
+        ], () => {
+            if (activeTool.value === 'bug-helper') syncBugMrTitles();
+            else bugMrLookupVersion++;
+        }, { immediate: true });
 
         const bugTransCards = computed(() => {
             const q = bugFilter.value.trim().toLowerCase();
@@ -6266,7 +6341,7 @@ createApp({
             jiraDomainUrl, jiraDomainHost,
             // Bug Fixing Helper
             bugInput, bugView, bugFilter, bugUnits, bugParseError, bugStats,
-            bugMetaGroups, bugUniqueMrs, bugTransCards,
+            bugMetaGroups, bugUniqueMrs, bugTransCards, bugJiraTickets, bugJiraStatus, syncBugMrTitles,
             fmtBugDate, bugSourceBadgeClass, toggleBugDiff, bugDiffOpen,
             loadBugSample, copyBugMetaCsv, exportBugMetaJson,
             bugHasUnsKeys, bugStorageStats, bugStorageBadgeClass,
