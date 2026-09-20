@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { collectMrs, extractJiraIds, jiraUrl, collectJiraTickets, createTitleLoader } = require('../bug-mr-summary');
+const { collectMrs, extractJiraIds, jiraUrl, collectJiraTickets, collectMrJiraRows, createTitleLoader } = require('../bug-mr-summary');
 
 function mr(project, iid) {
     return { key: JSON.stringify([project, String(iid)]), project, iid: String(iid), url: 'https://git.ringcentral.com/' + project + '/-/merge_requests/' + iid };
@@ -128,4 +128,37 @@ test('a failed refresh invalidates the previous title so filtering cannot restor
     await assert.rejects(load(item, '', true), /HTTP 503/);
     assert.equal(await load(item, ''), 'NEW-2');
     assert.equal(calls, 3);
+});
+
+
+test('mapping rows preserve one-to-many and many-to-one links while totals remain unique', () => {
+    const a = mr('web/chc', 3018), b = mr('web/web', 3018);
+    const details = {
+        [a.key]: { status: 'ready', title: '[UIA-415144, LOC-12] UIA-415144: banner' },
+        [b.key]: { status: 'ready', title: 'UIA-415144: follow-up' },
+    };
+    const rows = collectMrJiraRows([a, b], details);
+    assert.deepEqual(rows.map(row => row.tickets.map(ticket => ticket.id)), [['UIA-415144', 'LOC-12'], ['UIA-415144']]);
+    assert.equal(rows[0].tickets[0].mrCount, 2);
+    assert.equal(rows[0].tickets[1].mrCount, 1);
+    assert.equal(rows[1].project, 'web/web');
+    assert.equal(rows[1].title, 'UIA-415144: follow-up');
+    assert.equal(collectJiraTickets([a, b], details).length, 2);
+    const filtered = collectMrJiraRows([b], details, 'https://jira.example.com');
+    assert.equal(filtered[0].tickets[0].mrCount, 1);
+    assert.equal(filtered[0].tickets[0].url, 'https://jira.example.com/browse/UIA-415144');
+});
+
+test('mapping rows distinguish loading, failure, unsupported links and a title without ticket IDs', () => {
+    const mrs = [1, 2, 3, 4].map(iid => mr('web/chc', iid));
+    mrs[2].url = '';
+    const details = {
+        [mrs[1].key]: { status: 'error', error: 'HTTP 403' },
+        [mrs[3].key]: { status: 'ready', title: 'Maintenance without a ticket' },
+    };
+    const rows = collectMrJiraRows(mrs, details);
+    assert.deepEqual(rows.map(row => row.status), ['loading', 'error', 'unsupported', 'ready']);
+    assert.ok(rows.every(row => row.tickets.length === 0));
+    assert.equal(rows[1].error, 'HTTP 403');
+    assert.equal(rows[3].title, 'Maintenance without a ticket');
 });
