@@ -59,16 +59,18 @@ Click **Fetch & Parse**.
 - **Test Parser** — paste sample text in the sidebar to verify parsing logic
 - **Copy / Export** — one-click clipboard copy or JSON file download
 - **Config persistence** — domain, email, JQL saved to localStorage
-- **Bug Fixing Helper summaries** — MR Summary and JIRA Summary follow the current
-  metadata filter. MR titles are fetched automatically through the local proxy
-  using the [GitLab merge request API](https://docs.gitlab.com/api/merge_requests/#retrieve-a-merge-request).
-  Complete uppercase Jira keys (for example UIA-415144) become deduplicated links
-  using the configured Jira domain, or https://jira.ringcentral.com by default.
-  Hover a ticket to see its source MR titles. Requests are limited to four at a
-  time and successful titles are cached for the session; Refresh fetches them
-  again. Failed or unsupported MRs are marked as incomplete and can be retried
-  after restoring GitLab / VPN access. Jira credentials are never sent to GitLab.
-  Both summaries wrap below each other on smaller screens.
+- **Bug Fixing Helper MR → JIRA mapping** — each row pairs a merge request and
+  project with its clickable Jira tickets and the MR title. Shared tickets stay
+  visible on every related MR row, with an MR count; the header counts unique
+  tickets across the filtered list. Multiple tickets, missing IDs, loading,
+  failures, and unsupported links are shown beside the affected MR. On narrow
+  screens each association becomes a stacked row with MR, JIRA, and Title labels.
+  Titles are fetched automatically through the local proxy using the
+  [GitLab merge request API](https://docs.gitlab.com/api/merge_requests/#retrieve-a-merge-request).
+  Jira links use the configured domain, or https://jira.ringcentral.com by
+  default. Requests are limited to four at a time and successful titles are
+  cached for the session; Refresh fetches them again. Jira credentials are
+  never sent to GitLab.
 
 ## CORS Handling
 

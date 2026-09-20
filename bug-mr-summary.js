@@ -72,6 +72,25 @@
         return [...tickets.values()];
     }
 
+    // Keep the associations visible: global deduplication is for the total,
+    // while shared tickets appear beside every MR they actually belong to.
+    function collectMrJiraRows(mrs, details, domain) {
+        const byTicket = new Map(collectJiraTickets(mrs, details, domain).map(ticket => [ticket.id, ticket]));
+        return mrs.map(mr => {
+            const detail = details[mr.key];
+            const status = !mr.url ? 'unsupported' : (detail ? detail.status : 'loading');
+            const title = status === 'ready' ? detail.title : '';
+            return {
+                ...mr, status, title,
+                error: status === 'error' ? detail.error : '',
+                tickets: extractJiraIds(title).map(id => {
+                    const ticket = byTicket.get(id);
+                    return { ...ticket, mrCount: ticket.sources.length };
+                }),
+            };
+        });
+    }
+
     function createTitleLoader(fetchImpl, { timeoutMs = 15000, concurrency = 4 } = {}) {
         const cache = new Map();
         const pending = new Map();
@@ -127,5 +146,5 @@
         };
     }
 
-    return { parseMrUrl, collectMrs, extractJiraIds, jiraUrl, collectJiraTickets, createTitleLoader };
+    return { parseMrUrl, collectMrs, extractJiraIds, jiraUrl, collectJiraTickets, collectMrJiraRows, createTitleLoader };
 }));

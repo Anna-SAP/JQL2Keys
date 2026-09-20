@@ -32,9 +32,33 @@
     /* Bug Fixing Helper metadata matrix */
     .bug-matrix thead th { border-bottom: 1px solid #e5e7eb; }
     .bug-matrix tbody tr:hover { background: #f0fdfa; }
-    .bug-summary-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
-    @media (min-width: 1280px) {
-        .bug-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    /* Keep each MR, its tickets and its title in one scannable row. */
+    .bug-links-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+    .bug-links-caption { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    .bug-links-table th, .bug-links-table td { padding: 10px 16px; text-align: left; vertical-align: middle; }
+    .bug-links-table thead th { background: #f8fafc; color: #64748b; font-size: 10px; font-weight: 600; }
+    .bug-links-table tbody tr { border-top: 1px solid #f1f5f9; }
+    .bug-links-table tbody tr:hover { background: #fafbff; }
+    .bug-links-table tbody th { font-weight: 400; }
+    .bug-links-mr-content, .bug-links-mr-identity, .bug-links-tickets { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .bug-links-mr-identity, .bug-links-tickets { flex-wrap: wrap; }
+    .bug-links-project { font-size: 11px; color: #64748b; overflow-wrap: anywhere; }
+    .bug-links-arrow { margin-left: auto; color: #94a3b8; }
+    .bug-links-title { font-size: 12px; line-height: 1.5; color: #475569; overflow-wrap: anywhere; }
+    .bug-links-shared { border-left: 1px solid #c7d2fe; padding-left: 6px; font-size: 9px; font-family: sans-serif; white-space: nowrap; }
+    .bug-links-mobile-label { display: none; }
+    .bug-links-refresh { min-height: 32px; padding: 4px 10px; }
+    @media (max-width: 767px) {
+        .bug-links-table, .bug-links-table tbody, .bug-links-table tr, .bug-links-table tbody th, .bug-links-table td { display: block; width: 100%; }
+        .bug-links-table colgroup { display: none; }
+        .bug-links-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+        .bug-links-table tbody tr { padding: 12px 16px; }
+        .bug-links-table tbody th, .bug-links-table td { padding: 0; }
+        .bug-links-table td { display: flex; align-items: baseline; gap: 8px; margin-top: 8px; }
+        .bug-links-mobile-label { display: inline-block; flex: 0 0 36px; font-size: 10px; font-weight: 500; color: #64748b; }
+        .bug-links-arrow { display: none; }
+        .bug-links-table a, .bug-links-table button { min-height: 32px; }
+        .bug-links-title { font-size: 11px; }
     }
     </style>
 </head>
@@ -2414,70 +2438,79 @@
                             <template v-if="bugFilter.trim()">No units match “{{bugFilter}}”.</template>
                             <template v-else>None of the pasted units carry <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">_source</code> / <code class="font-mono text-[10px] bg-gray-100 px-1 py-0.5 rounded">_all_sources</code> provenance — try the Translations zone.</template>
                         </div>
-                        <!-- MR and Jira summaries follow the current filtered metadata list. -->
-                        <div v-if="bugMetaGroups.length" class="bug-summary-grid">
-                        <section aria-label="MR Summary" class="bg-white border border-emerald-200 rounded-lg shadow-sm px-4 py-3">
-                            <div class="flex items-center justify-between gap-2 flex-wrap">
-                                <div class="flex items-center gap-2">
-                                    <span class="text-xs font-semibold text-gray-700">MR Summary</span>
-                                    <span class="text-[10px] text-gray-400">deduplicated from the current list</span>
+                        <!-- Show the relationship itself, including shared tickets and per-MR states. -->
+                        <section v-if="bugMetaGroups.length" aria-label="MR and JIRA mapping" :aria-busy="bugJiraStatus.loading > 0"
+                            class="bug-links-summary bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                            <div class="px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+                                <div>
+                                    <h3 class="text-sm font-semibold text-gray-800">MR → JIRA</h3>
+                                    <p class="text-[11px] text-gray-500 mt-1">Each merge request and its linked tickets · current filtered list</p>
                                 </div>
-                                <span class="text-[10px] font-medium text-emerald-700 tabular-nums">
-                                    {{bugUniqueMrs.length}} unique MR{{bugUniqueMrs.length === 1 ? '' : 's'}}
-                                </span>
-                            </div>
-                            <div v-if="bugUniqueMrs.length" class="flex flex-wrap gap-2 mt-2.5">
-                                <template v-for="mr in bugUniqueMrs" :key="mr.key">
-                                    <a v-if="mr.url" :href="mr.url" target="_blank" rel="noopener noreferrer"
-                                        class="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 font-mono text-[11px] font-medium text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:underline transition"
-                                        :title="'Open ' + mr.url">
-                                        MR#{{mr.iid}}
-                                        <svg class="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-                                    </a>
-                                    <button v-else @click="copyText(mr.iid)" type="button"
-                                        class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 font-mono text-[11px] font-medium text-gray-600 hover:border-gray-300 hover:bg-gray-100 transition"
-                                        title="No MR link available — click to copy">MR#{{mr.iid}}</button>
-                                </template>
-                            </div>
-                            <div v-else class="mt-2 text-[11px] text-gray-400">No merge requests in the current list.</div>
-                        </section>
-                        <section aria-label="JIRA Summary" :aria-busy="bugJiraStatus.loading > 0" class="bg-white border border-indigo-200 rounded-lg shadow-sm px-4 py-3">
-                            <div class="flex items-center justify-between gap-2 flex-wrap">
-                                <div class="flex items-center gap-2 flex-wrap">
-                                    <span class="text-xs font-semibold text-gray-700">JIRA Summary</span>
-                                    <span class="text-[10px] text-gray-400">deduplicated from MR titles</span>
-                                </div>
-                                <div class="flex items-center gap-2">
-                                    <span class="text-[10px] font-medium text-indigo-700 tabular-nums">{{bugJiraTickets.length}} unique ticket{{bugJiraTickets.length === 1 ? '' : 's'}}</span>
+                                <div class="flex items-center gap-3 flex-wrap">
+                                    <span class="text-[11px] font-medium text-emerald-700 tabular-nums">{{bugUniqueMrs.length}} MR{{bugUniqueMrs.length === 1 ? '' : 's'}}</span>
+                                    <span class="text-[11px] font-medium text-indigo-700 tabular-nums">{{bugJiraTickets.length}} unique JIRA ticket{{bugJiraTickets.length === 1 ? '' : 's'}}</span>
                                     <button @click="syncBugMrTitles(true)" type="button" :disabled="!bugJiraStatus.linked || bugJiraStatus.loading > 0"
-                                        class="text-[11px] text-indigo-700 hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
-                                        title="Fetch the current MR titles again">{{bugJiraStatus.failed.length ? 'Retry' : 'Refresh'}}</button>
+                                        class="bug-links-refresh text-[11px] text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                                        title="Refresh MR titles and linked JIRA tickets">{{bugJiraStatus.failed.length ? 'Retry' : 'Refresh'}}</button>
                                 </div>
                             </div>
-                            <div v-if="bugJiraTickets.length" class="flex flex-wrap gap-2 mt-2.5">
-                                <a v-for="ticket in bugJiraTickets" :key="ticket.id" :href="ticket.url" target="_blank" rel="noopener noreferrer"
-                                    :title="ticket.sources.join('\n')"
-                                    class="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 font-mono text-[11px] font-medium text-indigo-700 hover:bg-indigo-100 hover:underline transition">
-                                    {{ticket.id}}
-                                    <svg class="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-                                </a>
-                            </div>
-                            <div class="mt-2 text-[11px] text-gray-400" role="status" aria-live="polite">
+                            <table v-if="bugMrJiraRows.length" class="bug-links-table">
+                                <caption class="bug-links-caption">Merge requests and the JIRA tickets found in each MR title</caption>
+                                <colgroup><col style="width: 26%"><col style="width: 32%"><col style="width: 42%"></colgroup>
+                                <thead><tr><th scope="col">MERGE REQUEST</th><th scope="col">LINKED JIRA TICKETS</th><th scope="col">MR TITLE</th></tr></thead>
+                                <tbody>
+                                    <tr v-for="mr in bugMrJiraRows" :key="mr.key" class="bug-mr-jira-row">
+                                        <th scope="row">
+                                            <div class="bug-links-mr-content">
+                                                <span class="bug-links-mobile-label" aria-hidden="true">MR</span>
+                                                <div class="bug-links-mr-identity">
+                                                    <a v-if="mr.url" :href="mr.url" target="_blank" rel="noopener noreferrer"
+                                                        class="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 font-mono text-[11px] font-medium text-emerald-700 hover:bg-emerald-100 hover:underline transition"
+                                                        :title="'Open ' + mr.project + ' !' + mr.iid">
+                                                        MR#{{mr.iid}}
+                                                        <svg class="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                                    </a>
+                                                    <button v-else @click="copyText(mr.iid)" type="button"
+                                                        class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 font-mono text-[11px] font-medium text-gray-600 hover:bg-gray-100"
+                                                        title="No MR link available — click to copy">MR#{{mr.iid}}</button>
+                                                    <span class="bug-links-project">{{mr.project}}</span>
+                                                </div>
+                                                <span class="bug-links-arrow" aria-hidden="true">→</span>
+                                            </div>
+                                        </th>
+                                        <td>
+                                            <span class="bug-links-mobile-label" aria-hidden="true">JIRA</span>
+                                            <div v-if="mr.tickets.length" class="bug-links-tickets">
+                                                <a v-for="ticket in mr.tickets" :key="ticket.id" :href="ticket.url" target="_blank" rel="noopener noreferrer"
+                                                    :title="ticket.sources.join('\n')"
+                                                    class="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 font-mono text-[11px] font-medium text-indigo-700 hover:bg-indigo-100 hover:underline transition">
+                                                    {{ticket.id}}
+                                                    <svg class="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                                    <span v-if="ticket.mrCount > 1" class="bug-links-shared">{{ticket.mrCount}} MRs</span>
+                                                </a>
+                                            </div>
+                                            <span v-else-if="mr.status === 'loading'" class="text-[11px] text-gray-500">Loading…</span>
+                                            <span v-else-if="mr.status === 'error'" class="text-[11px] text-amber-700">Could not load tickets</span>
+                                            <span v-else-if="mr.status === 'unsupported'" class="text-[11px] text-gray-500">No supported MR link</span>
+                                            <span v-else class="text-[11px] text-gray-500">No JIRA ID in title</span>
+                                        </td>
+                                        <td>
+                                            <span class="bug-links-mobile-label" aria-hidden="true">Title</span>
+                                            <span v-if="mr.status === 'ready'" class="bug-links-title">{{mr.title}}</span>
+                                            <span v-else-if="mr.status === 'error'" class="text-[11px] text-amber-700 break-all">{{mr.error}}</span>
+                                            <span v-else-if="mr.status === 'unsupported'" class="text-[11px] text-gray-500">This MR has no supported GitLab link.</span>
+                                            <span v-else class="text-[11px] text-gray-400">Fetching MR title…</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <div v-else class="px-4 py-3 text-[11px] text-gray-500">No merge requests in the current list.</div>
+                            <div v-if="bugJiraStatus.loading || bugJiraStatus.failed.length || bugJiraStatus.skipped"
+                                class="px-4 py-3 border-t border-gray-100 text-[11px] text-gray-500" role="status" aria-live="polite">
                                 <span v-if="bugJiraStatus.loading">Loading MR titles… {{bugJiraStatus.ready}} / {{bugJiraStatus.linked}} loaded.</span>
-                                <span v-else-if="!bugUniqueMrs.length">No merge requests in the current list.</span>
-                                <span v-else-if="bugJiraStatus.failed.length || bugJiraStatus.skipped">{{bugJiraStatus.ready}} / {{bugUniqueMrs.length}} MR titles loaded. The ticket list may be incomplete.</span>
-                                <span v-else-if="!bugJiraTickets.length">No JIRA ticket IDs found in these MR titles.</span>
-                                <span v-else>{{bugJiraStatus.ready}} MR title{{bugJiraStatus.ready === 1 ? '' : 's'}} checked.</span>
+                                <span v-else>{{bugJiraStatus.ready}} / {{bugUniqueMrs.length}} MR titles loaded. Some links could not be checked; see the affected rows.</span>
                             </div>
-                            <details v-if="bugJiraStatus.failed.length" class="mt-2 text-[11px] text-amber-700">
-                                <summary class="cursor-pointer">Could not load {{bugJiraStatus.failed.length}} MR title{{bugJiraStatus.failed.length === 1 ? '' : 's'}}. Check GitLab access / VPN and retry.</summary>
-                                <ul class="mt-1 space-y-1">
-                                    <li v-for="failure in bugJiraStatus.failed" :key="failure.key" class="break-all">{{failure.project}} !{{failure.iid}} — {{failure.error}}</li>
-                                </ul>
-                            </details>
-                            <div v-if="bugJiraStatus.skipped" class="mt-2 text-[11px] text-gray-500">{{bugJiraStatus.skipped}} MR{{bugJiraStatus.skipped === 1 ? '' : 's'}} without a supported GitLab link could not be checked.</div>
                         </section>
-                        </div>
                         <div v-for="grp in bugMetaGroups" :key="grp.key" class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
                             <!-- Key header -->
                             <div class="px-4 py-2.5 bg-gray-50 border-b border-gray-100 flex items-start justify-between gap-2 flex-wrap">
@@ -3299,7 +3332,7 @@ createApp({
         // ═══════════════════════════════════════
         //  UNS — App-level computeds
         // ═══════════════════════════════════════
-        const appVersion = '1.9.3';
+        const appVersion = '1.9.4';
         const appHostLabel = computed(() => {
             if (typeof location === 'undefined' || !location.host) return 'standalone';
             return location.host;
@@ -5986,6 +6019,7 @@ createApp({
         }
 
         const bugJiraTickets = computed(() => BugMrSummary.collectJiraTickets(bugUniqueMrs.value, bugMrDetails.value, config.domain));
+        const bugMrJiraRows = computed(() => BugMrSummary.collectMrJiraRows(bugUniqueMrs.value, bugMrDetails.value, config.domain));
         const bugJiraStatus = computed(() => {
             const status = { linked: 0, ready: 0, loading: 0, skipped: 0, failed: [] };
             for (const mr of bugUniqueMrs.value) {
@@ -6341,7 +6375,7 @@ createApp({
             jiraDomainUrl, jiraDomainHost,
             // Bug Fixing Helper
             bugInput, bugView, bugFilter, bugUnits, bugParseError, bugStats,
-            bugMetaGroups, bugUniqueMrs, bugTransCards, bugJiraTickets, bugJiraStatus, syncBugMrTitles,
+            bugMetaGroups, bugUniqueMrs, bugTransCards, bugJiraTickets, bugMrJiraRows, bugJiraStatus, syncBugMrTitles,
             fmtBugDate, bugSourceBadgeClass, toggleBugDiff, bugDiffOpen,
             loadBugSample, copyBugMetaCsv, exportBugMetaJson,
             bugHasUnsKeys, bugStorageStats, bugStorageBadgeClass,

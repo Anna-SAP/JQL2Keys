@@ -50,9 +50,16 @@ test('real Vue summaries follow filtering, deduplicate tickets and reuse loaded 
     finish(requests[1], '[UIA-415144 / LOC-12] fix');
     await tick();
     assert.deepEqual(ticketIds(app), ['UIA-415144', 'LOC-12']);
+    assert.deepEqual(Array.from(app.bugMrJiraRows.value, row => [row.project, Array.from(row.tickets, ticket => ticket.id)]), [
+        ['web/chc', ['UIA-415144']], ['web/web', ['UIA-415144', 'LOC-12']],
+    ]);
+    assert.equal(app.bugMrJiraRows.value[0].tickets[0].mrCount, 2);
     app.bugFilter.value = 'alpha';
     await tick();
     assert.deepEqual(ticketIds(app), ['UIA-415144']);
+    assert.equal(app.bugMrJiraRows.value.length, 1);
+    assert.equal(app.bugMrJiraRows.value[0].project, 'web/chc');
+    assert.equal(app.bugMrJiraRows.value[0].tickets[0].mrCount, 1);
     app.config.domain = 'https://jira.example.com/jira/';
     assert.equal(app.bugJiraTickets.value[0].url, 'https://jira.example.com/jira/browse/UIA-415144');
     app.bugFilter.value = '';
@@ -76,6 +83,8 @@ test('a delayed response for an old dump cannot add tickets to the current summa
     finish(requests[0], 'OLD-1: slow response');
     await tick();
     assert.deepEqual(ticketIds(app), ['NEW-2']);
+    assert.equal(app.bugMrJiraRows.value[0].iid, '2');
+    assert.equal(app.bugMrJiraRows.value[0].title, 'NEW-2: latest dump');
     assert.equal(app.bugJiraStatus.value.ready, 1);
     app.bugInput.value = '';
     await tick();
@@ -94,6 +103,7 @@ test('partial failures and unsupported links remain visible, and Retry replaces 
     assert.deepEqual(ticketIds(app), ['UIA-1']);
     assert.equal(app.bugJiraStatus.value.failed.length, 1);
     assert.equal(app.bugJiraStatus.value.skipped, 1);
+    assert.deepEqual(Array.from(app.bugMrJiraRows.value, row => row.status), ['ready', 'error', 'unsupported']);
     const retry = app.syncBugMrTitles(true);
     await tick();
     finish(requests[2], 'LOC-12: updated title');
