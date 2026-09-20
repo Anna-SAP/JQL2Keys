@@ -299,7 +299,7 @@ const APP_VERSION = readAppVersion();
 function withVersionedAssets(html) {
     const q = '?v=' + encodeURIComponent(APP_VERSION);
     return html
-        .replace(/((?:href|src)=")(vendor\/[^"]+|key-metadata-parser\.js)(")/g, '$1$2' + q + '$3')
+        .replace(/((?:href|src)=")(vendor\/[^"]+|key-metadata-parser\.js|bug-mr-summary\.js)(")/g, '$1$2' + q + '$3')
         .replace(/const appVersion = '[^']+'/, "const appVersion = '" + APP_VERSION + "'");
 }
 
@@ -308,6 +308,7 @@ const HTML_CONTENT = withVersionedAssets(loadHTML());
 // local is essential: if a CDN or VPN route is unavailable, Vue never mounts
 // and the v-cloaked SPA otherwise appears as a completely blank page.
 const STATIC_ASSET_DEFINITIONS = {
+    '/bug-mr-summary.js': { file: 'bug-mr-summary.js', directory: '', contentType: 'text/javascript; charset=utf-8', cacheControl: 'no-cache' },
     '/key-metadata-parser.js': { file: 'key-metadata-parser.js', directory: '', contentType: 'text/javascript; charset=utf-8', cacheControl: 'no-cache' },
     '/vendor/tailwind.min.css': { file: 'tailwind.min.css', directory: 'vendor', contentType: 'text/css; charset=utf-8' },
     '/vendor/vue.global.prod.js': { file: 'vue.global.prod.js', directory: 'vendor', contentType: 'text/javascript; charset=utf-8' },

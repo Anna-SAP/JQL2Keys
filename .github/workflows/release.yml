@@ -8,6 +8,7 @@ on:
       - 'jira-cors-proxy.js'
       - 'jira-l10n-key-extractor.html'
       - 'key-metadata-parser.js'
+      - 'bug-mr-summary.js'
       - 'package.json'
       - 'vendor/**'
       - 'test/**'

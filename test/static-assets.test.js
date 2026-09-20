@@ -12,6 +12,7 @@ const html = fs.readFileSync(path.join(root, 'jira-l10n-key-extractor.html'), 'u
 test('SPA uses bundled browser dependencies only', () => {
     assert.match(html, /href="vendor\/tailwind\.min\.css"/);
     assert.match(html, /src="key-metadata-parser\.js"/);
+    assert.match(html, /src="bug-mr-summary\.js"/);
     assert.match(html, /src="vendor\/vue\.global\.prod\.js"/);
     assert.match(html, /src="vendor\/jszip\.min\.js"/);
     assert.doesNotMatch(html, /<(?:script|link)\b[^>]+(?:src|href)="https?:\/\//i);
@@ -37,6 +38,7 @@ test('server exposes every bundled browser dependency', async (t) => {
     assert.equal(ready, true, 'server did not become ready');
 
     const expected = [
+        ['/bug-mr-summary.js', 'text/javascript'],
         ['/key-metadata-parser.js', 'text/javascript'],
         ['/vendor/tailwind.min.css', 'text/css'],
         ['/vendor/vue.global.prod.js', 'text/javascript'],
